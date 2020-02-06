@@ -228,7 +228,8 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     for(j=0; j<n; j++)                  //   g = g + ro * (At Nm1 A) h
       g[j] = g[j] - ro * AtNm1Ah[j] ;
 
-
+    /* Je test qqch */
+    
     MatVecProd(&BJ, g, Cg, 0);
     // for(j=0; j<n; j++)                  //
     //   Cg[j]=c[j]*g[j];                       //  Cg = C g  with C = Id
