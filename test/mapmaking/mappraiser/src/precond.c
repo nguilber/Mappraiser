@@ -1,3 +1,4 @@
+
 // MAPPRAISER preconditioner vdev
 // Routines for computing the diagonal and block-diagonal Jacobi preconditioners for the PCG
 // The routines also deal with degenerate pixels to ensure numerical stability of the system
@@ -16,6 +17,7 @@
 #include <string.h>
 #include "midapack.h"
 #include "mappraiser.h"
+#include <fftw3.h>
 
 extern int dgecon_(const char *norm, const int *n, double *a, const int *lda, const double *anorm, double *rcond, double *work, int *iwork, int *info, int len);
 extern int dgetrf_(const int *m, const int *n, double *a, const int *lda, int *lpiv, int *info);
@@ -254,6 +256,166 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, 
   return 0;
 
 }
+
+int TrMatVecProd_loc(Mat *A, double *y, double * x)
+{
+  int i, j, k, e;
+    
+  if(A->trash_pix){
+    for(i=0; i < A->lcount-A->nnz; i++)				//refresh vector
+      x[i]=0.0;						//
+
+      e=0;
+      for(i=0; i< A->m*A->nnz; i+=A->nnz){
+        if(A->indices[i]!=0){
+          //local transform reduce
+          for(j=0; j< A->nnz; j++){
+            x[A->indices[i+j]-(A->nnz)] += A->values[i+j] * y[e];	//
+          }
+        }							//
+        e++;
+      }
+  }
+  else{
+    for(i=0; i < A->lcount; i++)				//refresh vector
+      x[i]=0.0;						//
+
+      e=0;
+      for(i=0; i< A->m*A->nnz; i+=A->nnz){//local transform reduce
+        for(j=0; j< A->nnz; j++){
+          x[A->indices[i+j]] += A->values[i+j] * y[e];	//
+        }						//
+        e++;
+      }
+  }
+  
+  return 0;
+}
+
+int Build_ALS(Mat *A, Tpltz Nm1, Mat *CS, int nb_defl)
+{
+  int nb_blocks_loc;  
+  /* int nb_blocks_glob; */
+  Block *tpltzblocks;
+  double n; // size for the Fourier modes
+  int i0,i1,i2,i3,i4;
+  
+  nb_blocks_loc = Nm1.nb_blocks_loc;
+  /* nb_blocks_glob = Nm1->nb_blocks_glob; */
+  tpltzblocks = Nm1.tpltzblocks;
+
+  for (i0 = 0; i0 < nb_blocks_loc; ++i0) {
+    nti = tpltzblocks[i0].n;
+    double *PiTZi;
+
+    PiTZi = (double *) malloc(nb_defl*nti*sizeof(double)); // array of the matrix P_i^\top Z_i
+
+    for (i1=0; i1<nb_defl; ++i1) {
+      fftw_complex *in;
+      fftw_complex *out;
+      in = (fftw_complex *) malloc(nti*sizeof(fftw_complex));
+      out = (fftw_complex *) malloc(nti*sizeof(fftw_complex));
+
+      int c = 0;
+      
+      for (i2 = 0; i2 < nti; ++i2) {
+	in[i2][0] = (i2==c);
+	// in[i2][1] = 0;
+      }
+
+      fftw_plan plan_forw;
+      plan_forw = fftw_plan_dft_1d(nti,in,out,FFTW_FORWARD,FFTW_ESTIMATE);
+
+      plan_execute(plan_forw); // Execute FFT to get Fourier mode n°i1
+
+      int i, j, k, e;
+      double *x;
+      double *y;
+
+      x = (double *) malloc(nti*sizeof(double));
+      y = (double *) malloc(nti*sizeof(double));
+
+      for (i3 = 0; i3 < nti; ++i3) {
+	y[i3] = out[i3][0]; // Store the real part of the results of FFT in an array.
+      }
+
+      TrMatVecProd_loc(A,y,x); // Compute P_i^\top * Fourier mode n°i1
+
+      free(y);
+
+      for (i4 = 0; i4 < nti; ++i4) {
+	PiTZi[i1*nti+i4] = x[i4]; // Add P_i^\top * Fourier mode n°i1 to the full matrix P_i^\top Z_i !!!!!!!!NEED TO BE CHANGED!!!!!!!
+      }
+
+      /* Remain to do :
+Compute (P_i^top P_i)^{\dag} times what is in PiTZi
+      */
+      
+
+
+
+
+      ++c;
+    }
+    
+  }
+
+
+  
+
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 int precondjacobilike_avg(Mat A, Tpltz Nm1, double *c)
 {
 
