@@ -23,6 +23,8 @@ extern int dgecon_(const char *norm, const int *n, double *a, const int *lda, co
 extern int dgetrf_(const int *m, const int *n, double *a, const int *lda, int *lpiv, int *info);
 extern double dlange_(const char *norm, const int *m, const int *n, const double *a, const int *lda, double *work, const int norm_len);
 
+extern int dgeqp3(const int *m, const int *n, double *a, const int *lda, const double *tau, const double *work, const int *lwork, const int *info); //M, N, A, LDA, JPVT, TAU, WORK, LWORK, INFO
+
 int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, int *lhits)
 {
   int           i, j, k ;                       // some indexes
@@ -214,6 +216,7 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, 
     }
     uncut_pixel_index += (A->nnz)*(A->nnz);
   }
+  
   // free memory
   free(A->id0pix);
   free(A->ll);
@@ -292,23 +295,74 @@ int TrMatVecProd_loc(Mat *A, double *y, double * x)
   return 0;
 }
 
+int Build_PTP(Mat *A, Tpltz Nm1, double *ATA)
+{
+  int nb_blocks_loc;
+  // Block *tpltzblocks;
+  double nti;
+  double np;
+  int my_po;
+  int nnz;
+  int i0;
+
+  nb_blocks_loc = Nm1.nb_blocks_loc;
+  // tpltzblocks = Nm1.tpltzblocks;
+  np = A->lcount;
+  nnz = A->nnz;
+  
+  ATA = (double *) malloc(nb_blocks_loc*np*nnz*nnz*sizeof(double)); // We'll store the nnz*nnz coef of the block w.r.t. a pixel locpix from locpix+0 to locpix+(nnz*nnz-1) [maybe more interesting to do (double **) malloc(nb_blocks*sizeof(double *)) ]
+
+  for (i0 = 0; i0 < nb_blocks_loc; ++i0) {
+    nti = tpltzblocks[i0].n; // size of the toeplitz block = number of line in A_i0
+    
+    for (i1 = 0; i1 < nti; ++i1) {
+      locpix = A->indices[i1+i0*nb_blocks_loc]; // index of the pixel watch at time i1 in the i0 block on the proc
+      
+      // contribution of the pixel locpix to the block of size nnz*nnz of P.T*P
+      for (i2 = 0; i2 < nnz; ++i2) {
+	for (i3 = 0; i3 < nnz; ++i3) {
+	  ATA[i0*np*nnz*nnz+locpix+i2*nnz+i3] += A->values[i1+i2]*A->values[i1+i3];
+	}
+
+      }
+
+      
+      /*
+	When nnz = 3, it's equivalent to those line of code :
+	ATA[locpix] += A->values[i1]*A->values[i1];
+	ATA[locpix+1] += A->values[i1]*A->values[i1+1];
+	ATA[locpix+2] += A->values[i1]*A->values[i1+2];
+	ATA[locpix+3] += A->values[i1+1]*A->values[i1];
+	ATA[locpix+4] += A->values[i1+1]*A->values[i1+1];
+	ATA[locpix+5] += A->values[i1+1]*A->values[i1+2];
+	ATA[locpix+6] += A->values[i1+2]*A->values[i1];
+	ATA[locpix+7] += A->values[i1+2]*A->values[i1+1];
+	ATA[locpix+8] += A->values[i1+2]*A->values[i1+2];
+      */
+      
+    } 
+  }
+}
+
 int Build_ALS(Mat *A, Tpltz Nm1, Mat *CS, int nb_defl)
 {
   int nb_blocks_loc;  
   /* int nb_blocks_glob; */
   Block *tpltzblocks;
-  double n; // size for the Fourier modes
-  int i0,i1,i2,i3,i4;
+  double nti; // size of the time stream
+  double np; // number of local pixels
+  int i0,i1,i2,i3,i4; // loop indices
   
   nb_blocks_loc = Nm1.nb_blocks_loc;
   /* nb_blocks_glob = Nm1->nb_blocks_glob; */
   tpltzblocks = Nm1.tpltzblocks;
 
   for (i0 = 0; i0 < nb_blocks_loc; ++i0) {
-    nti = tpltzblocks[i0].n;
-    double *PiTZi;
+    nti = tpltzblocks[i0].n; // Size of the Fourier modes and time stream data
+    np = A->lcount; // number of local pixels
+    double *CS;
 
-    PiTZi = (double *) malloc(nb_defl*nti*sizeof(double)); // array of the matrix P_i^\top Z_i
+    CS = (double *) malloc(nb_defl*np*sizeof(double)); // array of the matrix (P_i^\top P_i)\inv P_i^\top Z_i
 
     for (i1=0; i1<nb_defl; ++i1) {
       fftw_complex *in;
@@ -316,10 +370,8 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *CS, int nb_defl)
       in = (fftw_complex *) malloc(nti*sizeof(fftw_complex));
       out = (fftw_complex *) malloc(nti*sizeof(fftw_complex));
 
-      int c = 0;
-      
       for (i2 = 0; i2 < nti; ++i2) {
-	in[i2][0] = (i2==c);
+	in[i2][0] = (i2==i1);
 	// in[i2][1] = 0;
       }
 
@@ -328,44 +380,39 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *CS, int nb_defl)
 
       plan_execute(plan_forw); // Execute FFT to get Fourier mode n°i1
 
-      int i, j, k, e;
       double *x;
       double *y;
+      double *z;
 
       x = (double *) malloc(nti*sizeof(double));
-      y = (double *) malloc(nti*sizeof(double));
+      y = (double *) malloc(np*sizeof(double));
+      z = (double *) malloc(np*sizeof(double));
 
       for (i3 = 0; i3 < nti; ++i3) {
-	y[i3] = out[i3][0]; // Store the real part of the results of FFT in an array.
+	x[i3] = out[i3][0]; // Store the real part of the results of FFT in an array.
       }
 
-      TrMatVecProd_loc(A,y,x); // Compute P_i^\top * Fourier mode n°i1
+      TrMatVecProd_loc(A,x,y); // Compute P_i^\top * Fourier mode n°i1
 
-      free(y);
+      free(x);
 
-      for (i4 = 0; i4 < nti; ++i4) {
-	PiTZi[i1*nti+i4] = x[i4]; // Add P_i^\top * Fourier mode n°i1 to the full matrix P_i^\top Z_i !!!!!!!!NEED TO BE CHANGED!!!!!!!
-      }
+      /* MatVecProd(&BJ,y,z,0); 
 
-      /* Remain to do :
-Compute (P_i^top P_i)^{\dag} times what is in PiTZi
+	 NAH... Not BJ=P.T diag(N) P, but just P.T P !!
+	 
       */
-      
 
+      /* free(y); */
 
-
-
-      ++c;
+      for (i4 = 0; i4 < np; ++i4) {
+	CS[i1*np+i4] = z[i4];
+      }
     }
+
+    
+
     
   }
-
-
-  
-
-
-
-
 }
 
 
@@ -498,48 +545,48 @@ int getlocalW(Mat *A, Tpltz Nm1, double *vpixBlock, int *lhits)
 {
   int           i, j, k, l ;                       // some indexes
   int           m;
-
+  
   m=Nm1.local_V_size;  //number of local time samples
   int nnz=(A->nnz);
-
+  
   //Define the indices for each process
   int idv0, idvn;  //indice of the first and the last block of V for each processes
   int *nnew;
   nnew = (int*) calloc(Nm1.nb_blocks_loc, sizeof(int));
   int64_t idpnew;
   int local_V_size_new;
-//get idv0 and idvn
+  //get idv0 and idvn
   get_overlapping_blocks_params( Nm1.nb_blocks_loc, Nm1.tpltzblocks, Nm1.local_V_size, Nm1.nrow, Nm1.idp, &idpnew, &local_V_size_new, nnew, &idv0, &idvn);
- // double *vpixDiag;
- // vpixDiag = (double *) malloc(A->lcount *sizeof(double));
+  // double *vpixDiag;
+  // vpixDiag = (double *) malloc(A->lcount *sizeof(double));
 
   int istart, il, istartn;
   for(i=0; i < nnz * A->lcount; i++)
     vpixBlock[i]=0.0;//0.0;
 
   int vShft=idpnew-Nm1.idp; //=Nm1.tpltzblocks[idv0].idv-Nm1.idp in principle
-/*
-  printf("Nm1.idp=%d, idpnew=%d, vShft=%d\n", Nm1.idp, idpnew, vShft);
-  printf("idv0=%d, idvn=%d\n", idv0, idvn);
-  printf("Nm1.nb_blocks_loc=%d, Nm1.local_V_size=%d\n", Nm1.nb_blocks_loc, Nm1.local_V_size);
+  /*
+    printf("Nm1.idp=%d, idpnew=%d, vShft=%d\n", Nm1.idp, idpnew, vShft);
+    printf("idv0=%d, idvn=%d\n", idv0, idvn);
+    printf("Nm1.nb_blocks_loc=%d, Nm1.local_V_size=%d\n", Nm1.nb_blocks_loc, Nm1.local_V_size);
 
-  for(i=0; i < Nm1.nb_blocks_loc; i++)
+    for(i=0; i < Nm1.nb_blocks_loc; i++)
     printf("Nm1.tpltzblocks[%d].idv=%d\n", i, Nm1.tpltzblocks[i].idv);
-*/
-
-//go until the first piecewise stationary period
-    for(i=0;i<vShft;i++){
-      lhits[(int)(A->indices[i*nnz]/nnz)] += 1;
-      for(j=0;j<nnz;j++){
-        for(k=0;k<nnz;k++){
-          vpixBlock[nnz*A->indices[i*nnz+j]+k] += A->values[i*nnz+j]*A->values[i*nnz+k];
-        }
+  */
+  
+  //go until the first piecewise stationary period
+  for(i=0;i<vShft;i++){
+    lhits[(int)(A->indices[i*nnz]/nnz)] += 1;
+    for(j=0;j<nnz;j++){
+      for(k=0;k<nnz;k++){
+	vpixBlock[nnz*A->indices[i*nnz+j]+k] += A->values[i*nnz+j]*A->values[i*nnz+k];
       }
     }
-
-//temporary buffer for one diag value of Nm1
+  }
+  
+  //temporary buffer for one diag value of Nm1
   double diagNm1;
-//loop on the blocks
+  //loop on the blocks
   for(k=idv0; k<(idv0+Nm1.nb_blocks_loc); k++) {
   if (nnew[idv0]>0) {  //if nnew==0, this is a wrong defined block
 
