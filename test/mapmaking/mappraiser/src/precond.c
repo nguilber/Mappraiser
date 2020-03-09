@@ -295,53 +295,70 @@ int TrMatVecProd_loc(Mat *A, double *y, double * x)
   return 0;
 }
 
-int Build_PTP(Mat *A, Tpltz Nm1, double *ATA)
+int Build_ATA_loc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows)
 {
-  int nb_blocks_loc;
+  // int nb_blocks_loc;
   // Block *tpltzblocks;
-  double nti;
+  // double nb_row;
   double np;
   int my_po;
   int nnz;
-  int i0;
 
-  nb_blocks_loc = Nm1.nb_blocks_loc;
   // tpltzblocks = Nm1.tpltzblocks;
   np = A->lcount;
   nnz = A->nnz;
   
-  ATA = (double *) malloc(nb_blocks_loc*np*nnz*nnz*sizeof(double)); // We'll store the nnz*nnz coef of the block w.r.t. a pixel locpix from locpix+0 to locpix+(nnz*nnz-1) [maybe more interesting to do (double **) malloc(nb_blocks*sizeof(double *)) ]
+  ATA = (double *) calloc(np*nnz*nnz,sizeof(double)); // We'll store the nnz*nnz coef of the block w.r.t. a pixel locpix from locpix+0 to locpix+(nnz*nnz-1) [maybe more interesting to do (double **) malloc(nb_blocks*sizeof(double *)) ]
 
-  for (i0 = 0; i0 < nb_blocks_loc; ++i0) {
-    nti = tpltzblocks[i0].n; // size of the toeplitz block = number of line in A_i0
+  for (i1 = 0; i1 < nb_rows; ++i1) {
+    locpix = A->indices[nnz*i1+row_indice*nb_blocks_loc]; // index of the pixel watch at time i1 in the row_indice block on the proc
     
-    for (i1 = 0; i1 < nti; ++i1) {
-      locpix = A->indices[i1+i0*nb_blocks_loc]; // index of the pixel watch at time i1 in the i0 block on the proc
-      
-      // contribution of the pixel locpix to the block of size nnz*nnz of P.T*P
-      for (i2 = 0; i2 < nnz; ++i2) {
-	for (i3 = 0; i3 < nnz; ++i3) {
-	  ATA[i0*np*nnz*nnz+locpix+i2*nnz+i3] += A->values[i1+i2]*A->values[i1+i3];
-	}
-
+    // contribution of the pixel locpix to the block of size nnz*nnz of P.T*P
+    for (i2 = 0; i2 < nnz; ++i2) {
+      for (i3 = 0; i3 < nnz; ++i3) {
+	ATA[row_indice*np*nnz*nnz+locpix+i2*nnz+i3] += A->values[nnz*i1+i2]*A->values[nnz*i1+i3]; // Quadruple check on this line, quite complicated
       }
-
       
-      /*
-	When nnz = 3, it's equivalent to those line of code :
-	ATA[locpix] += A->values[i1]*A->values[i1];
-	ATA[locpix+1] += A->values[i1]*A->values[i1+1];
-	ATA[locpix+2] += A->values[i1]*A->values[i1+2];
-	ATA[locpix+3] += A->values[i1+1]*A->values[i1];
-	ATA[locpix+4] += A->values[i1+1]*A->values[i1+1];
-	ATA[locpix+5] += A->values[i1+1]*A->values[i1+2];
-	ATA[locpix+6] += A->values[i1+2]*A->values[i1];
-	ATA[locpix+7] += A->values[i1+2]*A->values[i1+1];
-	ATA[locpix+8] += A->values[i1+2]*A->values[i1+2];
-      */
-      
-    } 
+    }
+    
+    
+    /*
+      When nnz = 3, it's equivalent to those line of code :
+      ATA[locpix] += A->values[i1]*A->values[i1];
+      ATA[locpix+1] += A->values[i1]*A->values[i1+1];
+      ATA[locpix+2] += A->values[i1]*A->values[i1+2];
+      ATA[locpix+3] += A->values[i1+1]*A->values[i1];
+      ATA[locpix+4] += A->values[i1+1]*A->values[i1+1];
+      ATA[locpix+5] += A->values[i1+1]*A->values[i1+2];
+      ATA[locpix+6] += A->values[i1+2]*A->values[i1];
+      ATA[locpix+7] += A->values[i1+2]*A->values[i1+1];
+      ATA[locpix+8] += A->values[i1+2]*A->values[i1+2];
+    */    
   }
+  
+
+  for (i4 = 0; i4 < np; ++i4) {
+    for (i5=0; i5 < nnz*nnz; ++i5) {
+      double *tmp_blck;
+      
+      tmp_blck = (double *) malloc(nnz*nnz*sizeof(double));
+      
+      tmp_blck = ATA[row_indice*np*nnz*nnz+i4+i5];
+
+      // ###### Call LAPACK routines to compute Cholesky factorisation of tmp_blck
+
+      // ######
+	
+    }
+  }
+  
+}
+
+
+int Apply_ATr_loc(Mat *A,double *x, double *y, int row_indice, int np)
+{
+
+
 }
 
 int Build_ALS(Mat *A, Tpltz Nm1, Mat *CS, int nb_defl)
@@ -349,10 +366,14 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *CS, int nb_defl)
   int nb_blocks_loc;  
   /* int nb_blocks_glob; */
   Block *tpltzblocks;
-  double nti; // size of the time stream
-  double np; // number of local pixels
+  int nti; // size of the time stream
+  int row_indice;
+  int np; // number of local pixels
   int i0,i1,i2,i3,i4; // loop indices
-  
+  int nnz;
+
+  row_indice = 0;
+  nnz = A->nnz;
   nb_blocks_loc = Nm1.nb_blocks_loc;
   /* nb_blocks_glob = Nm1->nb_blocks_glob; */
   tpltzblocks = Nm1.tpltzblocks;
@@ -361,10 +382,18 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *CS, int nb_defl)
     nti = tpltzblocks[i0].n; // Size of the Fourier modes and time stream data
     np = A->lcount; // number of local pixels
     double *CS;
+    double *ATA;
 
     CS = (double *) malloc(nb_defl*np*sizeof(double)); // array of the matrix (P_i^\top P_i)\inv P_i^\top Z_i
+    ATA = (double *)  malloc(np*nnz*nnz*sizeof(double));
 
+    // ###### Build ATA w.r.t. the local block i0
+    Build_ATA_loc(A,Nm1,&ATA,row_indice,nti);
+    
     for (i1=0; i1<nb_defl; ++i1) {
+
+
+      // ###### TO PUT IN A FUNCTION THAT GIVES THE EIGENVECTOR WANTED : Fourier modes or ARNOLDI procedure
       fftw_complex *in;
       fftw_complex *out;
       in = (fftw_complex *) malloc(nti*sizeof(fftw_complex));
@@ -379,7 +408,8 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *CS, int nb_defl)
       plan_forw = fftw_plan_dft_1d(nti,in,out,FFTW_FORWARD,FFTW_ESTIMATE);
 
       plan_execute(plan_forw); // Execute FFT to get Fourier mode n°i1
-
+      // ###### out is the variable returned by the function
+      
       double *x;
       double *y;
       double *z;
@@ -392,10 +422,14 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *CS, int nb_defl)
 	x[i3] = out[i3][0]; // Store the real part of the results of FFT in an array.
       }
 
-      TrMatVecProd_loc(A,x,y); // Compute P_i^\top * Fourier mode n°i1
+      // ###### Call of the function to do the local pointing : pointing of 1 block
+      Apply_ATr_loc(A,x,&y,row_indice,np); // Compute P_i^\top * Fourier mode n°i1 ####PB : We want to multiply only by the line of P_i^\top not the full set store on the proc... :/
 
       free(x);
+      // ######
 
+      
+      // ###### Call the function to do the (A_i^T*A_i)^\dagger local product
       /* MatVecProd(&BJ,y,z,0); 
 
 	 NAH... Not BJ=P.T diag(N) P, but just P.T P !!
@@ -408,11 +442,8 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *CS, int nb_defl)
 	CS[i1*np+i4] = z[i4];
       }
     }
-
-    
-
-    
-  }
+    row_indice += nti-1;
+      }
 }
 
 
