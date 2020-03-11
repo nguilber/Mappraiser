@@ -18,6 +18,7 @@
 #include "midapack.h"
 #include "mappraiser.h"
 #include <fftw3.h>
+#include <mkl.h>
 
 extern int dgecon_(const char *norm, const int *n, double *a, const int *lda, const double *anorm, double *rcond, double *work, int *iwork, int *info, int len);
 extern int dgetrf_(const int *m, const int *n, double *a, const int *lda, int *lpiv, int *info);
@@ -295,13 +296,12 @@ int TrMatVecProd_loc(Mat *A, double *y, double * x)
   return 0;
 }
 
-int Build_ATA_loc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows)
+int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows)
 {
   // int nb_blocks_loc;
   // Block *tpltzblocks;
   // double nb_row;
   double np;
-  int my_po;
   int nnz;
 
   // tpltzblocks = Nm1.tpltzblocks;
@@ -311,12 +311,12 @@ int Build_ATA_loc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows)
   ATA = (double *) calloc(np*nnz*nnz,sizeof(double)); // We'll store the nnz*nnz coef of the block w.r.t. a pixel locpix from locpix+0 to locpix+(nnz*nnz-1) [maybe more interesting to do (double **) malloc(nb_blocks*sizeof(double *)) ]
 
   for (i1 = 0; i1 < nb_rows; ++i1) {
-    locpix = A->indices[nnz*i1+row_indice*nb_blocks_loc]; // index of the pixel watch at time i1 in the row_indice block on the proc
+    locpix = A->indices[i1+row_indice]; // index of the pixel watch at time i1 in the row_indice block on the proc
     
     // contribution of the pixel locpix to the block of size nnz*nnz of P.T*P
     for (i2 = 0; i2 < nnz; ++i2) {
       for (i3 = 0; i3 < nnz; ++i3) {
-	ATA[row_indice*np*nnz*nnz+locpix+i2*nnz+i3] += A->values[nnz*i1+i2]*A->values[nnz*i1+i3]; // Quadruple check on this line, quite complicated
+	ATA[locpix+i2*nnz+i3] += A->values[locpix*nnz+nnz*i2]*A->values[locapix*nnz+i3]; // Quadruple check on this line, quite complicated
       }
       
     }
@@ -338,27 +338,74 @@ int Build_ATA_loc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows)
   
 
   for (i4 = 0; i4 < np; ++i4) {
+
+    double *tmp_blck;
+    tmp_blck = (double *) malloc(nnz*nnz*sizeof(double));
+
     for (i5=0; i5 < nnz*nnz; ++i5) {
-      double *tmp_blck;
-      
-      tmp_blck = (double *) malloc(nnz*nnz*sizeof(double));
-      
-      tmp_blck = ATA[row_indice*np*nnz*nnz+i4+i5];
-
-      // ###### Call LAPACK routines to compute Cholesky factorisation of tmp_blck
-
-      // ######
-	
+      tmp_blck[i5] = ATA[i4+i5];	
     }
+    
+    // ###### Call LAPACK routines to compute Cholesky factorisation of tmp_blck
+
+    // Cholesky_factorisation_LAPACK(tmpblck);
+    info = LAPACKE_dpotrf(matrix_layout='LAPACK_ROW_MAJOR',uplo='L',n=nnz,a=tmp_blck,lda=nnz);
+
+    // ######
+    
+    for (i6 = 0; i6 < nnz; ++i6) {
+      for (i7 = 0; i7 < i6+1; ++i7) {
+	ATA[i4+i6*nnz+i7] = tmp_blck[i6*nnz+i7];
+      }
+    }
+
+    free(tmp_blck);
+
   }
   
 }
 
 
-int Apply_ATr_loc(Mat *A,double *x, double *y, int row_indice, int np)
+int Apply_ATr_bloc(Mat *A, double *x, double *y, int row_indice, int nb_rows)
 {
+  int i0,i1;
+  
+  for (i0 = row_indice; i0 < row_indice+nb_rows; ++i0) {
+    for(i1 = 0; i1 < A->nnz; ++i1){				//
+      y[A->indices[i0*A->nnz+i1]] += (A->values[i0*A->nnz+i1]) * x[i0];
+    }
+  }
+}
+
+int Apply_ATA_bloc(Mat *A, double *ATA, double *y, double *z)
+{
+  int np;
+  int i0;
+  
+  np = A->lcount;
+
+  for (i0 = 0; i0 < np; ++i0) {
+
+    double *tmp_blck;
+    double *tmp_vec;
+
+    tmp_blck = (double *) malloc(sizeof(double)*nnz*nnz);
+    tmp_vec = (double *) malloc(sizeof(double)*nnz);
 
 
+    for (i1 = 0; i1 < nnz; ++i1) {
+      tmp_vec[i1] = y[i0*nnz+i1];
+      for (i2 = 0; i2 < i1+1; ++i2) {
+	tmp_blck[i1*nnz+i2] = ATA[i0+i1*nnz+i2];
+      }
+    }
+
+    info = LAPACKE_dpotrs(matrix_layout='LAPACK_ROW_MAJOR',uplo='L',n=nnz,a=tmp_blck,b=tmp_vec,lbd=nnz);
+    
+    for (i2 = 0; i2 < nnz; ++i2) {
+      z[i0*nnz+i2] = tmp_vec[i2];
+    }
+  }  
 }
 
 int Build_ALS(Mat *A, Tpltz Nm1, Mat *CS, int nb_defl)
@@ -372,6 +419,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *CS, int nb_defl)
   int i0,i1,i2,i3,i4; // loop indices
   int nnz;
 
+  np = A->lcount; // number of local pixels
   row_indice = 0;
   nnz = A->nnz;
   nb_blocks_loc = Nm1.nb_blocks_loc;
@@ -380,15 +428,15 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *CS, int nb_defl)
 
   for (i0 = 0; i0 < nb_blocks_loc; ++i0) {
     nti = tpltzblocks[i0].n; // Size of the Fourier modes and time stream data
-    np = A->lcount; // number of local pixels
-    double *CS;
+    
+    /* double *CS; */
     double *ATA;
 
-    CS = (double *) malloc(nb_defl*np*sizeof(double)); // array of the matrix (P_i^\top P_i)\inv P_i^\top Z_i
+    /* CS = (double *) malloc(nb_defl*np*sizeof(double)); // array of the matrix (P_i^\top P_i)\inv P_i^\top Z_i */
     ATA = (double *)  malloc(np*nnz*nnz*sizeof(double));
 
     // ###### Build ATA w.r.t. the local block i0
-    Build_ATA_loc(A,Nm1,&ATA,row_indice,nti);
+    Build_ATA_bloc(A,Nm1,&ATA,row_indice,nti);
     
     for (i1=0; i1<nb_defl; ++i1) {
 
@@ -401,7 +449,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *CS, int nb_defl)
 
       for (i2 = 0; i2 < nti; ++i2) {
 	in[i2][0] = (i2==i1);
-	// in[i2][1] = 0;
+	in[i2][1] = 0;
       }
 
       fftw_plan plan_forw;
@@ -415,7 +463,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *CS, int nb_defl)
       double *z;
 
       x = (double *) malloc(nti*sizeof(double));
-      y = (double *) malloc(np*sizeof(double));
+      y = (double *) calloc(np*sizeof(double));
       z = (double *) malloc(np*sizeof(double));
 
       for (i3 = 0; i3 < nti; ++i3) {
@@ -423,27 +471,32 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *CS, int nb_defl)
       }
 
       // ###### Call of the function to do the local pointing : pointing of 1 block
-      Apply_ATr_loc(A,x,&y,row_indice,np); // Compute P_i^\top * Fourier mode n°i1 ####PB : We want to multiply only by the line of P_i^\top not the full set store on the proc... :/
+      Apply_ATr_bloc(A,x,&y,row_indice); // Compute P_i^\top * Fourier mode n°i1
 
       free(x);
       // ######
 
       
-      // ###### Call the function to do the (A_i^T*A_i)^\dagger local product
-      /* MatVecProd(&BJ,y,z,0); 
+      // ###### Do the (A_i^T*A_i)^\dagger local product
 
-	 NAH... Not BJ=P.T diag(N) P, but just P.T P !!
-	 
-      */
+      Apply_ATA_bloc(A,ATA,y,&z,row_indice);
+      // ######
 
-      /* free(y); */
+      free(y);
 
+      // ###### Store the resulting vector in CS
       for (i4 = 0; i4 < np; ++i4) {
 	CS[i1*np+i4] = z[i4];
       }
     }
     row_indice += nti-1;
-      }
+  }
+
+  info = LAPACKE_dgeqrfp(matrix_layout='LAPACK_COL_MAJOR',m=np,n=nb_defl*nb_blocks_loc,a=CS,lda=m);
+
+  
+  
+  
 }
 
 
