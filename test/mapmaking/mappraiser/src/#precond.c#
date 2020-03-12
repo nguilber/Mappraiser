@@ -539,9 +539,9 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *CS, int nb_defl)
   info = LAPACKE_dgeqp3(matrix_layout='LAPACK_COL_MAJOR',m=n,n=n,a=R,lda=n,jpvt=jpvt);
 
   // ###### Select the colums of the Q-factor related to high enough singular values
-
   int index;
   index = 0;
+  
   while (R[index*n+index] > 0.001) {
     
   }
