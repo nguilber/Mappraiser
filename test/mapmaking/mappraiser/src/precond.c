@@ -300,20 +300,19 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows)
 {
   double np;                            // Number of pixel
   int nnz;                              // Number of coef per line of A
-  int i0,i1,i2,i3,i4,i5,i6,i7,i8;       // some loop index
 
   np = A->lcount;
   nnz = A->nnz;
   
-  ATA = (double *) calloc(np*nnz*nnz,sizeof(double));
-  
-  for (i0 = 0; i0 < nb_rows; ++i0) {
-    locpix = A->indices[i0+row_indice]; // index of the pixel watch at time i0 in the row_indice block on the proc
+  ATA = (double *) calloc(np*nnz*nnz,sizeof(double)); // We'll store the nnz*nnz coef of the block w.r.t. a pixel locpix from locpix+0 to locpix+(nnz*nnz-1) [maybe more interesting to do (double **) malloc(nb_blocks*sizeof(double *)) ]
+
+  for (i1 = 0; i1 < nb_rows; ++i1) {
+    locpix = A->indices[i1+row_indice]; // index of the pixel watch at time i1 in the row_indice block on the proc
     
     // contribution of the pixel locpix to the block of size nnz*nnz of P.T*P
-    for (i1 = 0; i1 < nnz; ++i1) {
-      for (i2 = 0; i2 < nnz; ++i2) {
-	ATA[locpix+i1*nnz+i2] += A->values[locpix*nnz+nnz*i1]*A->values[locapix*nnz+i2]; // Quadruple check on this line, quite complicated
+    for (i2 = 0; i2 < nnz; ++i2) {
+      for (i3 = 0; i3 < nnz; ++i3) {
+	ATA[locpix+i2*nnz+i3] += A->values[locpix*nnz+nnz*i2]*A->values[locapix*nnz+i3]; // Quadruple check on this line, quite complicated
       }
       
     }
@@ -321,26 +320,26 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows)
     
     /*
       When nnz = 3, it's equivalent to those line of code :
-      ATA[locpix] += A->values[i0]*A->values[i0];
-      ATA[locpix+1] += A->values[i0]*A->values[i0+1];
-      ATA[locpix+2] += A->values[i0]*A->values[i0+2];
-      ATA[locpix+3] += A->values[i0+1]*A->values[i0];
-      ATA[locpix+4] += A->values[i0+1]*A->values[i0+1];
-      ATA[locpix+5] += A->values[i0+1]*A->values[i0+2];
-      ATA[locpix+6] += A->values[i0+2]*A->values[i0];
-      ATA[locpix+7] += A->values[i0+2]*A->values[i0+1];
-      ATA[locpix+8] += A->values[i0+2]*A->values[i0+2];
+      ATA[locpix] += A->values[i1]*A->values[i1];
+      ATA[locpix+1] += A->values[i1]*A->values[i1+1];
+      ATA[locpix+2] += A->values[i1]*A->values[i1+2];
+      ATA[locpix+3] += A->values[i1+1]*A->values[i1];
+      ATA[locpix+4] += A->values[i1+1]*A->values[i1+1];
+      ATA[locpix+5] += A->values[i1+1]*A->values[i1+2];
+      ATA[locpix+6] += A->values[i1+2]*A->values[i1];
+      ATA[locpix+7] += A->values[i1+2]*A->values[i1+1];
+      ATA[locpix+8] += A->values[i1+2]*A->values[i1+2];
     */    
   }
   
 
-  for (i3 = 0; i3 < np; ++i3) {
+  for (i4 = 0; i4 < np; ++i4) {
 
     double *tmp_blck;
     tmp_blck = (double *) malloc(nnz*nnz*sizeof(double));
 
-    for (i4=0; i4 < nnz*nnz; ++i4) {
-      tmp_blck[i4] = ATA[i3+i4];	
+    for (i5=0; i5 < nnz*nnz; ++i5) {
+      tmp_blck[i5] = ATA[i4+i5];	
     }
 
     double A1_norm_tmp;
@@ -348,9 +347,9 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows)
     A1_norm = 0.0;
     // A1_norm = (double *) calloc(sizeof(double)*nnz);
 
-    for (i5 = 0; i5 < nnz; ++i5) {
-      for (i6 = 0; i6 < nnz; ++i6) {
-	A1_norm_tmp += abs(tmp_blck[i6]);
+    for (i6 = 0; i6 < nnz; ++i6) {
+      for (i7 = 0; i7 < nnz; ++i7) {
+	A1_norm_tmp += abs(tmp_blck[i7]);
       }
       if (A1_norm_tmp > A1_norm) {
 	A1_norm = A1_norm_tmp;
@@ -366,13 +365,13 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows)
 
     // ###### Copy the Cholesky factor in ATA if condition number not bad
     if (rcond > 0.1) {      
-      for (i7 = 0; i7 < nnz; ++i7) {
-	for (i8 = 0; i8 < i7+1; ++i8) {
-	  ATA[i3+i7*nnz+i8] = tmp_blck[i7*nnz+i8];
+      for (i6 = 0; i6 < nnz; ++i6) {
+	for (i7 = 0; i7 < i6+1; ++i7) {
+	  ATA[i4+i6*nnz+i7] = tmp_blck[i6*nnz+i7];
 	}
       }
       else {
-	ATA[i3] = -1;
+	ATA[i4] = -1;
       }
 
     }
