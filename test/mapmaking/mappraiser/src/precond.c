@@ -306,8 +306,6 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows)
   np = A->lcount;
   nnz = A->nnz;
   
-  ATA = (double *) calloc(np*nnz*nnz,sizeof(double));
-  
   for (i0 = 0; i0 < nb_rows; ++i0) {
     locpix = A->indices[i0+row_indice]; // index of the pixel watch at time i0 in the row_indice block on the proc
     
@@ -334,61 +332,64 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows)
     */    
   }
   
+  double *tmp_blck;
+  tmp_blck = (double *) malloc(nnz*nnz*sizeof(double));
 
   for (i3 = 0; i3 < np; ++i3) {
 
-    double *tmp_blck;
-    tmp_blck = (double *) malloc(nnz*nnz*sizeof(double));
-
-    for (i4=0; i4 < nnz*nnz; ++i4) {
-      tmp_blck[i4] = ATA[i3+i4];	
-    }
-
-    double A1_norm_tmp;
-    double A1_norm;
-    A1_norm = 0.0;
-    // A1_norm = (double *) calloc(sizeof(double)*nnz);
-
-    for (i5 = 0; i5 < nnz; ++i5) {
-      for (i6 = 0; i6 < nnz; ++i6) {
-	A1_norm_tmp += abs(tmp_blck[i6]);
+    if (ATA[i3+0] =! 0) {
+      
+      for (i4=0; i4 < nnz*nnz; ++i4) {
+	tmp_blck[i4] = ATA[i3+i4];	
       }
-      if (A1_norm_tmp > A1_norm) {
-	A1_norm = A1_norm_tmp;
-      }
-    }
-    
-    // ###### Call LAPACK routines to compute Cholesky factorisation of tmp_blck
-    info = LAPACKE_dpotrf(matrix_layout='LAPACK_ROW_MAJOR',uplo='L',n=nnz,a=tmp_blck,lda=nnz);
 
-    if (info > 0) {
-      printf("The leading minor of order %i.",info);
-    }
-    if (info < 0) {
-      printf("The parameter %e had an illegal value.",info);
-    }
-    
-    // ###### Compute the condition number of the block to know if we'll have to apply it in Apply_ATA_bloc
-    double rcond;
-    info = LAPACKE_dpocon(matrix_layout='LAPACK_ROW_MAJOR',uplo='L',n=nnz,a=tmp_blck,lda=nnz,anorm=A1_norm,rcond=rcond);
+      // Compute ||tmp_blck||_1 = ||tmp_blck||_{\infty}
+      double A1_norm_tmp;
+      double A1_norm;
+      A1_norm = 0.0;
 
-    if (info =! 0) {
-      printf("The parameter %i had an illegal value",info);
-    }
-
-    // ###### Copy the Cholesky factor in ATA if condition number not bad
-    if (rcond > 0.1) {      
-      for (i7 = 0; i7 < nnz; ++i7) {
-	for (i8 = 0; i8 < i7+1; ++i8) {
-	  ATA[i3+i7*nnz+i8] = tmp_blck[i7*nnz+i8];
+      for (i5 = 0; i5 < nnz; ++i5) {
+	for (i6 = 0; i6 < nnz; ++i6) {
+	  A1_norm_tmp += abs(tmp_blck[i6]);
+	}
+	if (A1_norm_tmp > A1_norm) {
+	  A1_norm = A1_norm_tmp;
 	}
       }
-      else {
-	ATA[i3] = -1;
+      
+      // ###### Call LAPACK routines to compute Cholesky factorisation of tmp_blck
+      info = LAPACKE_dpotrf(matrix_layout='LAPACK_ROW_MAJOR',uplo='L',n=nnz,a=tmp_blck,lda=nnz);
+      
+      if (info > 0) {
+	printf("The leading minor of order %i.",info);
+      }
+      if (info < 0) {
+	printf("The parameter %e had an illegal value.",info);
+      }
+    
+      // ###### Compute the condition number of the block to know if we'll have to apply it in Apply_ATA_bloc : need to have the cholesky factorization done first, that's why it's not before LAPACKE_dpotrf
+      double rcond;
+      info = LAPACKE_dpocon(matrix_layout='LAPACK_ROW_MAJOR',uplo='L',n=nnz,a=tmp_blck,lda=nnz,anorm=A1_norm,rcond=rcond);
+      
+      if (info =! 0) {
+	printf("The parameter %i had an illegal value",info);
       }
 
+      // ###### Copy the Cholesky factor in ATA if condition number not bad : rcond = 1/cond > 1/10 <=> cond < 10
+      if (rcond > 0.1) {      
+	for (i7 = 0; i7 < nnz; ++i7) {
+	  for (i8 = 0; i8 < i7+1; ++i8) {
+	    ATA[i3+i7*nnz+i8] = tmp_blck[i7*nnz+i8];
+	  }
+	}
+	else {
+	  ATA[i3] = -1;
+	}	
+      }
     }
-    free(tmp_blck);
+    else {
+      ATA[i3] = -1;
+    }
   }
 }
 
@@ -467,12 +468,12 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *Z, int nb_defl)
 {
   int nb_blocks_loc;                  // Number of local bloc, ie on a the proc
   Block *tpltzblocks;                 // Pointer to the tpltzblocks struct
-  double *CS;                         // Array for the coarse space before reduction of the number of vector through QR     
-  double *ATA;                        // Array to store the (A_i.T * A_i) block operator                                    
   int nti;                            // size of the time stream
   int row_indice;                     // Index of the first line in depointing matrix A for the bloc we look at
   int np;                             // number of local pixels
   int nnz;                            // Number of non-zeros per line in A
+  double *CS;                         // Array for the coarse space before reduction of the number of vector through QR     
+  double *ATA;                        // Array to store the (A_i.T * A_i) block operator
   fftw_complex *in;                   // Vector to store entry of the FFT                                                   
   fftw_complex *out;                  // Vector to store output of the FFT                                                  
   double *x;                          // Vector to store eigen vector w.r.t to one bloc                                     
@@ -482,15 +483,15 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *Z, int nb_defl)
   
   nb_blocks_loc = Nm1.nb_blocks_loc;
   tpltzblocks = Nm1.tpltzblocks;
-  CS = (double *) malloc(sizeof(double)*np*nb_blocks_loc*nb_defl);
-  ATA = (double *)  malloc(np*nnz*nnz*sizeof(double));
   row_indice = 0;
   np = A->lcount; // number of local pixels
   nnz = A->nnz;
+  CS = (double *) malloc(sizeof(double)*np*nb_blocks_loc*nb_defl);
+  ATA = (double *)  calloc(np*nnz*nnz,sizeof(double));
   in = (fftw_complex *) malloc(nti*sizeof(fftw_complex));
   out = (fftw_complex *) malloc(nti*sizeof(fftw_complex));  
   x = (double *) malloc(nti*sizeof(double));
-  y = (double *) calloc(np*sizeof(double));
+  y = (double *) calloc(np,sizeof(double));
   z = (double *) malloc(np*sizeof(double));  
 
   
@@ -524,67 +525,8 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *Z, int nb_defl)
       }
 
     }
-    row_indice += nti-1;
-  }
-
-  /* // ###### Free the memory from useless variable */
-  /* free(x); */
-  /* free(y); */
-  /* free(z); */
-  /* free(in); */
-  /* free(out); */
-
-  /* // ###### Compute a not Rank Revealing QR on the coarse space of the proc */
-  /* int n; */
-  /* n = nb_defl*nb_blocks_loc; */
-  /* double *tau; */
-  /* tau = (double *) malloc(sizeof(double)*n); */
-  
-  /* info = LAPACKE_dgeqrfp(matrix_layout='LAPACK_COL_MAJOR',m=np,n=n,a=CS,lda=m,tau=tau); */
-
-  /* // ###### Extract R from data in COL_MAJOR */
-  /* double *R; */
-  /* R = (double *) calloc(sizeof(double)*n*n); */
-  
-  /* for (i5 = 0; i5 < n; ++i5) { */
-  /*   for (i6 = 0; i6 < i5+1; ++i6) { */
-  /*     R[i5+i6*n] = CS[i5+i6*n]; */
-  /*   } */
-  /* } */
-
-  /* // ###### Compute a RR-QR on the R-factor */
-  /* int *jpvt; */
-  /* jpvt = (int *) malloc(sizeof(int)*n); */
-  /* double *tau_tmp; */
-  /* tau_tmp = (double *) malloc(sizeof(double)*n); */
-
-  /* info = LAPACKE_dgeqp3(matrix_layout='LAPACK_COL_MAJOR',m=n,n=n,a=R,lda=n,jpvt=jpvt,tau=tau_tmp); */
-
-  /* free(tau_tmp); */
-
-  /* // ###### Get the Q-factor from CS */
-  /* info = LAPACKE_dorgqr(matrix_layout='LAPACK_COL_MAJOR',m=np,n=n,k=n,a=CS,lda=m,tau=tau); */
-
-  /* // ###### Select the colums of the Q-factor related to high enough singular values */
-  /* int size_CS; */
-  /* size_CS = 0; */
-  
-  /* while (R[size_CS*n+size_CS] > tol_svd) {     */
-  /*   size_CS += 1; */
-  /* } */
-
-  /* free(R); */
-
-  /* Z = (double *) realloc(double,np*size_CS); */
-
-  /* for (i7 = 0; i7 < size_CS; ++i7) { */
-  /*   for (i8 = 0; i8 < np; ++i8) { */
-  /*     Z[i7*np+i8] = CS[jpvt[i7]*np+i8]; */
-  /*   } */
-  /* } */
-
-  /* free(CS); */
-  
+    row_indice += nti;
+  }  
 }
 
 // Build a orthonormal basis of a coarse space Z
@@ -603,7 +545,7 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd)
   
   // ###### Extract R from data in COL_MAJOR
   double *R;
-  R = (double *) calloc(sizeof(double)*nb_cols*nb_cols);
+  R = (double *) calloc(nb_cols*nb_cols,sizeof(double));
   
   for (i5 = 0; i5 < nb_cols; ++i5) {
     for (i6 = 0; i6 < i5+1; ++i6) {
