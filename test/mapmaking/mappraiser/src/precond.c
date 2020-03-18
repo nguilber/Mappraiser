@@ -297,24 +297,21 @@ int TrMatVecProd_loc(Mat *A, double *y, double * x)
 }
 
 // Build (A_i.T * A_i) bloc of size nnz*nnz operator
-int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows)
+int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, int np)
 {
-  double np;                            // Number of pixel
   int nnz;                              // Number of coef per line of A
   int i0,i1,i2,i3,i4,i5,i6,i7,i8;       // some loop index
 
-  np = A->lcount;
   nnz = A->nnz;
   
   for (i0 = 0; i0 < nb_rows; ++i0) {
-    locpix = A->indices[i0+row_indice]; // index of the pixel watch at time i0 in the row_indice block on the proc
+    locpix = A->indices[row_indice+i0]; // index of the pixel watch at time i0 in the row_indice block on the proc
     
     // contribution of the pixel locpix to the block of size nnz*nnz of P.T*P
     for (i1 = 0; i1 < nnz; ++i1) {
       for (i2 = 0; i2 < nnz; ++i2) {
-	ATA[locpix+i1*nnz+i2] += A->values[locpix*nnz+nnz*i1]*A->values[locapix*nnz+i2]; // Quadruple check on this line, quite complicated
+	ATA[locpix+i1*nnz+i2] += (A->values[locpix*nnz+i1])*(A->values[locpix*nnz+i2]);
       }
-      
     }
     
     
@@ -406,24 +403,26 @@ int Apply_ATr_bloc(Mat *A, double *x, double *y, int row_indice, int nb_rows)
 }
 
 // Apply the product (A_i.T * A_i)^{-1} * v for a timestream of one block
-int Apply_ATA_bloc(Mat *A, double *ATA, double *y, double *z)
+int Apply_ATA_bloc(Mat *A, double *ATA, double *y, double *z, int np)
 {
-  int np;              // Number of pixel
   int i0,i1,i2,i3,i4;  // Loop index
+  int nnz;
   double *tmp_blck;    // Temporary block of the block-operator A_i.T * A_i of size nnz*nnz
   double *tmp_vec;     // Temporary vector (A_i.T * A_i)^{-1} * v of size nnz
-  
+
+  nnz = A->nnz;
   tmp_blck = (double *) malloc(sizeof(double)*nnz*nnz);
   tmp_vec = (double *) malloc(sizeof(double)*nnz);
-  np = A->lcount;
 
   for (i0 = 0; i0 < np; ++i0) {
+
     for (i1 = 0; i1 < nnz; ++i1) {
       tmp_vec[i1] = y[i0*nnz+i1];
       for (i2 = 0; i2 < i1+1; ++i2) {
 	tmp_blck[i1*nnz+i2] = ATA[i0+i1*nnz+i2];
       }
     }
+
     if (tmp_blck[0] =! -1) { 
       // ###### Apply (P_i.T * P_i)^{-1} * v using the cholesky factor
       info = LAPACKE_dpotrs(matrix_layout='LAPACK_ROW_MAJOR',uplo='L',n=nnz,a=tmp_blck,b=tmp_vec,lbd=nnz);
@@ -442,8 +441,6 @@ int Apply_ATA_bloc(Mat *A, double *ATA, double *y, double *z)
 	z[i0*nnz+i4] = 0.0;
       }
     }
-    free(tmp_blck);
-    free(tmp_vec);
   }
 }
 
@@ -464,13 +461,12 @@ int get_Fourier_mode(double *in, double *out, int size, int index_mode)
 }
 
 // Build the coarse space from eigenvector of the blocks
-int Build_ALS(Mat *A, Tpltz Nm1, Mat *Z, int nb_defl)
+int Build_ALS(Mat *A, Tpltz Nm1, double *Z, int nb_defl, int np)
 {
   int nb_blocks_loc;                  // Number of local bloc, ie on a the proc
   Block *tpltzblocks;                 // Pointer to the tpltzblocks struct
   int nti;                            // size of the time stream
   int row_indice;                     // Index of the first line in depointing matrix A for the bloc we look at
-  int np;                             // number of local pixels
   int nnz;                            // Number of non-zeros per line in A
   double *CS;                         // Array for the coarse space before reduction of the number of vector through QR     
   double *ATA;                        // Array to store the (A_i.T * A_i) block operator
@@ -479,12 +475,11 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *Z, int nb_defl)
   double *x;                          // Vector to store eigen vector w.r.t to one bloc                                     
   double *y;                          // Vector to store A_i.T * x                                                          
   double *z;                          // Vector to store (A_i.T * A_i)^{-1} * y                                             
-  int i0,i1,i2,i3,i4,i5,i6,i7,i8;     // loop indices
+  int i0,i1,i2,i3,i4;                 // loop indices
   
   nb_blocks_loc = Nm1.nb_blocks_loc;
   tpltzblocks = Nm1.tpltzblocks;
   row_indice = 0;
-  np = A->lcount; // number of local pixels
   nnz = A->nnz;
   CS = (double *) malloc(sizeof(double)*np*nb_blocks_loc*nb_defl);
   ATA = (double *)  calloc(np*nnz*nnz,sizeof(double));
@@ -499,7 +494,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *Z, int nb_defl)
     nti = tpltzblocks[i0].n; // Size of the block
 
     // ###### Build ATA w.r.t. the local block i0
-    Build_ATA_bloc(A,Nm1,&ATA,row_indice,nti);
+    Build_ATA_bloc(A,Nm1,&ATA,row_indice,nti,np);
     
     for (i1=0; i1<nb_defl; ++i1) {
       // ###### Get the fourier mode of order i0 and take it as an eigenvector of the block
@@ -513,11 +508,11 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *Z, int nb_defl)
       }
       
       // ###### Call of the function to do the local pointing : pointing of 1 block
-      Apply_ATr_bloc(A,x,&y,row_indice); // Compute P_i^\top * Fourier mode n°i1
+      Apply_ATr_bloc(A,x,&y,row_indice,nti); // Compute P_i^\top * Fourier mode n°i1
 
       
       // ###### Do the (A_i^T*A_i)^\dagger local product
-      Apply_ATA_bloc(A,ATA,y,&z,row_indice);
+      Apply_ATA_bloc(A,ATA,y,&z,np);
       
       // ###### Store the resulting vector in coarse space array CS
       for (i4 = 0; i4 < np; ++i4) {
@@ -530,13 +525,14 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *Z, int nb_defl)
 }
 
 // Build a orthonormal basis of a coarse space Z
-int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd)
+int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd, int *size_CS)
 {
-  int i0,i1,i2;                                    // Loop index
+  int i0,i1,i2,i3,i4;                              // Loop index
   double *tau;                                     // Coef. of the Householder reflection in the Q-factor
     
   tau = (double *) malloc(sizeof(double)*nb_cols);
-  
+
+  // Compute non-pivoting QR factorization of coarse space Z
   info = LAPACKE_dgeqrfp(matrix_layout='LAPACK_COL_MAJOR',m=nb_rows,n=nb_cols,a=Z,lda=m,tau=tau);
 
   if (info =! 0) {
@@ -547,9 +543,9 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd)
   double *R;
   R = (double *) calloc(nb_cols*nb_cols,sizeof(double));
   
-  for (i5 = 0; i5 < nb_cols; ++i5) {
-    for (i6 = 0; i6 < i5+1; ++i6) {
-      R[i5+i6*nb_cols] = Z[i5+i6*nb_cols];
+  for (i0 = 0; i0 < nb_cols; ++i0) {
+    for (i1 = 0; i1 < i0+1; ++i1) {
+      R[i0+i1*nb_cols] = Z[i0+i1*nb_cols];
     }
   }
   
@@ -575,30 +571,29 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd)
   }
   
   // ###### Select the colums of the Q-factor related to high enough singular values
-  int size_CS;
-  size_CS = 0;
+  &size_CS = 0;
   
-  while (R[size_CS*nb_cols+size_CS] > tol_svd) {    
-    size_CS += 1;
+  while (R[&size_CS*nb_cols+&size_CS] > tol_svd) {    
+    &size_CS += 1;
   }
   
   free(R);
 
   double *CS;
   
-  CS = (double *) malloc(sizeof(double)*nb_rows*size_CS);
+  CS = (double *) malloc(sizeof(double)*nb_rows*&size_CS);
   
-  for (i0 = 0; i0 < size_CS; ++i0) {
-    for (i1 = 0; i1 < nb_rows; ++i1) {
-      CS[i0*nb_rows+i1] = Z[jpvt[i0]*nb_rows+i1];
+  for (i2 = 0; i2 < &size_CS; ++i2) {
+    for (i3 = 0; i3 < nb_rows; ++i3) {
+      CS[i2*nb_rows+i3] = Z[jpvt[i2]*nb_rows+i3];
     }
   }
 
-  for (i2 = 0; i2 < nb_rows*size_CS; ++i2) {
-    Z[i2] = CS[i2];
+  for (i4 = 0; i4 < nb_rows*&size_CS; ++i4) {
+    Z[i4] = CS[i4];
   }
 
-  Z = (double *) realloc(Z,nb_rows*size_CS);
+  Z = (double *) realloc(Z,nb_rows*&size_CS);
 }
 
 
