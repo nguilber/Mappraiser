@@ -20,7 +20,7 @@
 
 
 
-int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int nb_defl)
+int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K)
 {
   int 		i, j, k ;			// some indexes
   int		m, n, rank, size;
@@ -73,7 +73,8 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   if(tmp !=NULL){
     x = tmp;
   }
-
+  int nb_defl;
+  nb_defl = 5; // To give as argument of PCG_GLS_true later on
   int nb_blocks_loc;
   nb_blocks_loc = Nm1.nb_blocks_loc;
   
@@ -85,7 +86,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
   double tol_svd;
   int *new_size;
-  tol_svd = 0.001;  
+  tol_svd = 0.001; // To give as argument of PCG_GLS_true later on
 
   // Orthogonalize the coarse space Z on a proc
   Orthogonalize_Space_loc(Z,n,nb_defl*nb_blocks_loc,tol_svd,*new_size);
