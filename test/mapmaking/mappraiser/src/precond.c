@@ -296,6 +296,7 @@ int TrMatVecProd_loc(Mat *A, double *y, double * x)
   return 0;
 }
 
+// Build (A_i.T * A_i) bloc of size nnz*nnz operator
 int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows)
 {
   double np;                            // Number of pixel
@@ -391,7 +392,7 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows)
   }
 }
 
-
+// Apply the product A_i.T * v for a timestream of one block
 int Apply_ATr_bloc(Mat *A, double *x, double *y, int row_indice, int nb_rows)
 {
   int i0,i1;           // Some loop index
@@ -403,6 +404,7 @@ int Apply_ATr_bloc(Mat *A, double *x, double *y, int row_indice, int nb_rows)
   }
 }
 
+// Apply the product (A_i.T * A_i)^{-1} * v for a timestream of one block
 int Apply_ATA_bloc(Mat *A, double *ATA, double *y, double *z)
 {
   int np;              // Number of pixel
@@ -444,6 +446,7 @@ int Apply_ATA_bloc(Mat *A, double *ATA, double *y, double *z)
   }
 }
 
+// Get the fourier mode of order index_mode through fftw3 package
 int get_Fourier_mode(double *in, double *out, int size, int index_mode)
 {
   int i0;
@@ -459,6 +462,7 @@ int get_Fourier_mode(double *in, double *out, int size, int index_mode)
   plan_execute(plan_forw); // Execute FFT to get Fourier mode n°i1
 }
 
+// Build the coarse space from eigenvector of the blocks
 int Build_ALS(Mat *A, Tpltz Nm1, Mat *Z, int nb_defl)
 {
   int nb_blocks_loc;                  // Number of local bloc, ie on a the proc
@@ -583,6 +587,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, Mat *Z, int nb_defl)
   
 }
 
+// Build a orthonormal basis of a coarse space Z
 int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd)
 {
   int i0,i1,i2;                                    // Loop index
