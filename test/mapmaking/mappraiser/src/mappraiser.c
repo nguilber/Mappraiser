@@ -190,7 +190,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int pointing_com
 
   MPI_Barrier(comm);
    if(rank==0)
- printf("##### Start PCG ####################\n");
+ printf("##### Start PCG ! ####################\n");
  fflush(stdout);
 
   //Hard coded parameters (To be removed)

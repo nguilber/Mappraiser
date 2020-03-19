@@ -49,6 +49,13 @@ int getlocDiagN(Mat *A, Tpltz Nm1, double *vpixDiag);
 
 int DiagAtA(Mat *A, double *diag, int pflag);
 
+
+
+
+int Build_ALS(Mat *A, Tpltz Nm1, double *Z, int nb_defl, int np);
+
+int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd, int *size_CS);
+
 // Communication routine for building the pixel blocks of the preconditioner
 int commScheme(Mat *A, double *vpixDiag, int pflag);
 
