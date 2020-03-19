@@ -91,7 +91,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   // Orthogonalize the coarse space Z on a proc
   Orthogonalize_Space_loc(Z,n,nb_defl*nb_blocks_loc,tol_svd,*new_size);
 
-  printf("The size of the coarse space on the proc %i is %i",&rank,&new_size);
+  printf("The size of the coarse space on the proc %i is %i",rank,new_size);
 
 /*   //map domain */
 /*   h = (double *) malloc(n * sizeof(double));      //descent direction */
