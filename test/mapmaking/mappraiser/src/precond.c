@@ -356,26 +356,30 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, 
 	}
       }
       
+
       // ###### Call LAPACK routines to compute Cholesky factorisation of tmp_blck
-      info = LAPACKE_dpotrf(1,'L',nnz,tmp_blck,nnz);
+      info = LAPACKE_dpotrf(LAPACK_ROW_MAJOR,'L',nnz,tmp_blck,nnz);
       
       if (info > 0) {
-	printf("The leading minor of order %i.",info);
+	printf("The leading minor of order %i is not positive-definite, and the factorization could not be completed.",info);
       }
       if (info < 0) {
-	printf("The parameter %i had an illegal value.",info);
+	printf("The parameter %i had an illegal value.",-info);
       }
     
       // ###### Compute the condition number of the block to know if we'll have to apply it in Apply_ATA_bloc : need to have the cholesky factorization done first, that's why it's not before LAPACKE_dpotrf
-      double *rcond;
-      info = LAPACKE_dpocon(1,'L',nnz,tmp_blck,nnz,A1_norm,rcond);
+      double rcond;
+      info = LAPACKE_dpocon(LAPACK_ROW_MAJOR,'L',nnz,tmp_blck,nnz,A1_norm,&rcond);
+
+      printf("----------->HERE !!!!<--------------");
+      fflush(stdout);
       
       if (info =! 0) {
 	printf("The parameter %i had an illegal value",info);
       }
 
       // ###### Copy the Cholesky factor in ATA if condition number not bad : rcond = 1/cond > 1/10 <=> cond < 10
-      if (rcond[0] > 0.1) {      
+      if (rcond > 0.1) {      
 	for (i7 = 0; i7 < nnz; ++i7) {
 	  for (i8 = 0; i8 < i7+1; ++i8) {
 	    ATA[i3+i7*nnz+i8] = tmp_blck[i7*nnz+i8];
@@ -430,7 +434,7 @@ int Apply_ATA_bloc(Mat *A, double *ATA, double *y, double *z, int np)
 
     if (tmp_blck[0] =! -1) { 
       // ###### Apply (P_i.T * P_i)^{-1} * v using the cholesky factor
-      info = LAPACKE_dpotrs(1,'L',nnz,1,tmp_blck,nnz,tmp_vec,nnz);
+      info = LAPACKE_dpotrs(LAPACK_ROW_MAJOR,'L',nnz,1,tmp_blck,nnz,tmp_vec,nnz);
       
       if (info =! 0) {
 	printf("The parameter %i had an illegal value",info);
@@ -500,7 +504,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *Z, int nb_defl, int np)
     nti = tpltzblocks[i0].n; // Size of the block
 
     ATA = (double *)  calloc(np*nnz*nnz,sizeof(double));
-    
+      
     // ###### Build ATA w.r.t. the local block i0
     Build_ATA_bloc(A,Nm1,ATA,row_indice,nti,np);
     
@@ -543,7 +547,7 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
   tau = (double *) malloc(sizeof(double)*nb_cols);
 
   // Compute non-pivoting QR factorization of coarse space Z
-  info = LAPACKE_dgeqrfp(0,nb_rows,nb_cols,Z,nb_rows,tau);
+  info = LAPACKE_dgeqrfp(LAPACK_COL_MAJOR,nb_rows,nb_cols,Z,nb_rows,tau);
 
   if (info =! 0) {
     printf("The parameter %i had an illegal value",info);
@@ -565,7 +569,7 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
   double *tau_tmp;
   tau_tmp = (double *) malloc(sizeof(double)*nb_cols);
   
-  info = LAPACKE_dgeqp3(0,nb_cols,nb_cols,R,nb_cols,jpvt,tau_tmp);
+  info = LAPACKE_dgeqp3(LAPACK_COL_MAJOR,nb_cols,nb_cols,R,nb_cols,jpvt,tau_tmp);
 
   if (info =! 0) {
     printf("The parameter %i had an illegal value",info);
@@ -574,7 +578,7 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
   free(tau_tmp);
   
   // ###### Get the Q-factor from Z
-  info = LAPACKE_dorgqr(0,nb_rows,nb_cols,nb_cols,Z,nb_rows,tau);
+  info = LAPACKE_dorgqr(LAPACK_COL_MAJOR,nb_rows,nb_cols,nb_cols,Z,nb_rows,tau);
 
   if (info =! 0) {
     printf("The parameter %i had an illegal value",info);
