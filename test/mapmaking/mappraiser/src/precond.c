@@ -307,27 +307,32 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, 
   nnz = A->nnz;
   
   for (i0 = 0; i0 < nb_rows; ++i0) {
-    locpix = A->indices[row_indice+i0];
+    locpix = A->indices[row_indice+i0*nnz];
 
-    // contribution of the pixel locpix to the block of size nnz*nnz of P.T*P
+    for (i = 0; i < nnz; ++i) {
+      printf(" %f",A->values[locpix*nnz+i])
+    }
+
+
+    // contribution of the pixel locpix to the block of size nnz*nnz of A_i.T*A_i
     for (i1 = 0; i1 < nnz; ++i1) {
       for (i2 = 0; i2 < nnz; ++i2) {
-	ATA[locpix+i1*nnz+i2] += (A->values[locpix*nnz+i1])*(A->values[locpix*nnz+i2]);
+	ATA[locpix*nnz*nnz+i1*nnz+i2] += (A->values[locpix*nnz+i1])*(A->values[locpix*nnz+i2]);
       }
     }
     
     
     /*
       When nnz = 3, it's equivalent to those line of code :
-      ATA[locpix] += A->values[i0]*A->values[i0];
-      ATA[locpix+1] += A->values[i0]*A->values[i0+1];
-      ATA[locpix+2] += A->values[i0]*A->values[i0+2];
-      ATA[locpix+3] += A->values[i0+1]*A->values[i0];
-      ATA[locpix+4] += A->values[i0+1]*A->values[i0+1];
-      ATA[locpix+5] += A->values[i0+1]*A->values[i0+2];
-      ATA[locpix+6] += A->values[i0+2]*A->values[i0];
-      ATA[locpix+7] += A->values[i0+2]*A->values[i0+1];
-      ATA[locpix+8] += A->values[i0+2]*A->values[i0+2];
+      ATA[locpix*nnz*nnz] += A->values[locpix*nnz]*A->values[locpix*nnz];
+      ATA[locpix*nnz*nnz+1] += A->values[locpix*nnz]*A->values[locpix*nnz+1];
+      ATA[locpix*nnz*nnz+2] += A->values[locpix*nnz]*A->values[locpix*nnz+2];
+      ATA[locpix*nnz*nnz+3] += A->values[locpix*nnz+1]*A->values[locpix*nnz];
+      ATA[locpix*nnz*nnz+4] += A->values[locpix*nnz+1]*A->values[locpix*nnz+1];
+      ATA[locpix*nnz*nnz+5] += A->values[locpix*nnz+1]*A->values[locpix*nnz+2];
+      ATA[locpix*nnz*nnz+6] += A->values[locpix*nnz+2]*A->values[locpix*nnz];
+      ATA[locpix*nnz*nnz+7] += A->values[locpix*nnz+2]*A->values[locpix*nnz+1];
+      ATA[locpix*nnz*nnz+8] += A->values[locpix*nnz+2]*A->values[locpix*nnz+2];
     */    
   }
   
@@ -336,42 +341,70 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, 
 
   for (i3 = 0; i3 < np; ++i3) {
 
-    if (ATA[i3+0] =! 0) {
+    if (ATA[i3*nnz*nnz+0] =! 0) {
       
       for (i4=0; i4 < nnz*nnz; ++i4) {
-	tmp_blck[i4] = ATA[i3+i4];	
+	tmp_blck[i4] = ATA[i3*nnz*nnz+i4];	
       }
 
-      // Compute ||tmp_blck||_1 = ||tmp_blck||_{\infty}
-      double A1_norm_tmp;
-      double A1_norm;
-      A1_norm = 0.0;
-
-      for (i5 = 0; i5 < nnz; ++i5) {
-	for (i6 = 0; i6 < nnz; ++i6) {
-	  A1_norm_tmp += abs(tmp_blck[i6]);
-	}
-	if (A1_norm_tmp > A1_norm) {
-	  A1_norm = A1_norm_tmp;
-	}
+      printf("The block is :\n");
+      int i;
+      for (i = 0; i < nnz*nnz; ++i) {
+	printf(" %f",tmp_blck[i]);
       }
+
+      printf("\n");
       
-      // ###### Call LAPACK routines to compute Cholesky factorisation of tmp_blck
-      info = LAPACKE_dpotrf(LAPACK_ROW_MAJOR,'L',nnz,tmp_blck,nnz);
+      // Compute ||tmp_blck||_1 = ||tmp_blck||_{\infty}
+      double A_norm1;
+
+      /* double A_norm1_tmp;       */
+      /* A_norm1 = 0.0; */
+
+      // ###### Compute the norm 1 of tmp_blk
+      A_norm1 = LAPACKE_dlange(LAPACK_ROW_MAJOR,'1',nnz,nnz,tmp_blck,nnz);
+      printf("The norm 1 of the block is %f.",A_norm1);
+      
+      /* for (i5 = 0; i5 < nnz; ++i5) { */
+      /* 	for (i6 = 0; i6 < nnz; ++i6) { */
+      /* 	  A_norm1_tmp += abs(tmp_blck[i6]); */
+      /* 	} */
+      /* 	if (A_norm1_tmp > A_norm1) { */
+      /* 	  A_norm1 = A_norm1_tmp; */
+      /* 	} */
+      /* } */
+      
+      // ###### Compute the LU factorisation of tmp_blck
+      int *ipiv;
+      info = LAPACKE_dgetrf(LAPACK_ROW_MAJOR,nnz,nnz,tmp_blck,nnz,ipiv);
       
       if (info > 0) {
-	printf("The leading minor of order %i is not positive-definite, and the factorization could not be completed.",info);
+	printf("u_{%i,%i} is 0. The factorization has been completed, but U is exactly singular. Division by 0 will occur if you use the factor U for solving a system of linear equations.",info,info);
+	/* printf(tmp_blck); */
+	/* printf("\n"); */
+	/* break; */
       }
       if (info < 0) {
 	printf("The parameter %i had an illegal value.",-info);
       }
+      if (info == 0) {
+	printf("dgetrf went ok !");
+      }
+      
+      /* // ###### Call LAPACK routines to compute Cholesky factorisation of tmp_blck */
+      /* info = LAPACKE_dpotrf(LAPACK_ROW_MAJOR,'L',nnz,tmp_blck,nnz); */
+      
+      /* if (info > 0) { */
+      /* 	printf("The leading minor of order %i is not positive-definite, and the factorization could not be completed.",info); */
+      /* } */
+      /* if (info < 0) { */
+      /* 	printf("The parameter %i had an illegal value.",-info); */
+      /* } */
     
       // ###### Compute the condition number of the block to know if we'll have to apply it in Apply_ATA_bloc : need to have the cholesky factorization done first, that's why it's not before LAPACKE_dpotrf
       double rcond;
-      info = LAPACKE_dpocon(LAPACK_ROW_MAJOR,'L',nnz,tmp_blck,nnz,A1_norm,&rcond);
-
-      printf("----------->HERE !!!!<--------------");
-      fflush(stdout);
+      // info = LAPACKE_dpocon(LAPACK_ROW_MAJOR,'L',nnz,tmp_blck,nnz,A_norm1,&rcond);
+      info = LAPACKE_dgecon(LAPACK_ROW_MAJOR,'1',nnz,tmp_blck,nnz,A_norm1,&rcond);
       
       if (info =! 0) {
 	printf("The parameter %i had an illegal value",info);
