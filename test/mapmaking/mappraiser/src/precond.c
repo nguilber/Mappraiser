@@ -307,20 +307,14 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, 
   nnz = A->nnz;
   
   for (i0 = 0; i0 < nb_rows; ++i0) {
-    locpix = A->indices[row_indice+i0*nnz];
-
-    for (i = 0; i < nnz; ++i) {
-      printf(" %f",A->values[locpix*nnz+i])
-    }
-
-
-    // contribution of the pixel locpix to the block of size nnz*nnz of A_i.T*A_i
+    locpix = A->indices[row_indice*nnz+i0*nnz];
+        
+    // contribution of the pixel locpix to the block of size nnz*nnz of A_i.T*A_i at time row_indice+i0
     for (i1 = 0; i1 < nnz; ++i1) {
       for (i2 = 0; i2 < nnz; ++i2) {
-	ATA[locpix*nnz*nnz+i1*nnz+i2] += (A->values[locpix*nnz+i1])*(A->values[locpix*nnz+i2]);
+	ATA[locpix*nnz*nnz+i1*nnz+i2] += (A->values[(row_indice+i0)*nnz+i1])*(A->values[(row_indice+i0)*nnz+i2]);
       }
     }
-    
     
     /*
       When nnz = 3, it's equivalent to those line of code :
@@ -341,91 +335,52 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, 
 
   for (i3 = 0; i3 < np; ++i3) {
 
-    if (ATA[i3*nnz*nnz+0] =! 0) {
+    if (ATA[i3*nnz*nnz] > 3) {
       
       for (i4=0; i4 < nnz*nnz; ++i4) {
 	tmp_blck[i4] = ATA[i3*nnz*nnz+i4];	
       }
-
-      printf("The block is :\n");
-      int i;
-      for (i = 0; i < nnz*nnz; ++i) {
-	printf(" %f",tmp_blck[i]);
-      }
-
-      printf("\n");
       
-      // Compute ||tmp_blck||_1 = ||tmp_blck||_{\infty}
-      double A_norm1;
-
-      /* double A_norm1_tmp;       */
-      /* A_norm1 = 0.0; */
-
       // ###### Compute the norm 1 of tmp_blk
+      double A_norm1;
       A_norm1 = LAPACKE_dlange(LAPACK_ROW_MAJOR,'1',nnz,nnz,tmp_blck,nnz);
-      printf("The norm 1 of the block is %f.",A_norm1);
       
-      /* for (i5 = 0; i5 < nnz; ++i5) { */
-      /* 	for (i6 = 0; i6 < nnz; ++i6) { */
-      /* 	  A_norm1_tmp += abs(tmp_blck[i6]); */
-      /* 	} */
-      /* 	if (A_norm1_tmp > A_norm1) { */
-      /* 	  A_norm1 = A_norm1_tmp; */
-      /* 	} */
-      /* } */
-      
-      // ###### Compute the LU factorisation of tmp_blck
-      int *ipiv;
-      info = LAPACKE_dgetrf(LAPACK_ROW_MAJOR,nnz,nnz,tmp_blck,nnz,ipiv);
-      
-      if (info > 0) {
-	printf("u_{%i,%i} is 0. The factorization has been completed, but U is exactly singular. Division by 0 will occur if you use the factor U for solving a system of linear equations.",info,info);
-	/* printf(tmp_blck); */
-	/* printf("\n"); */
-	/* break; */
-      }
-      if (info < 0) {
-	printf("The parameter %i had an illegal value.",-info);
-      }
-      if (info == 0) {
-	printf("dgetrf went ok !");
-      }
-      
-      /* // ###### Call LAPACK routines to compute Cholesky factorisation of tmp_blck */
-      /* info = LAPACKE_dpotrf(LAPACK_ROW_MAJOR,'L',nnz,tmp_blck,nnz); */
-      
-      /* if (info > 0) { */
-      /* 	printf("The leading minor of order %i is not positive-definite, and the factorization could not be completed.",info); */
-      /* } */
-      /* if (info < 0) { */
-      /* 	printf("The parameter %i had an illegal value.",-info); */
-      /* } */
-    
       // ###### Compute the condition number of the block to know if we'll have to apply it in Apply_ATA_bloc : need to have the cholesky factorization done first, that's why it's not before LAPACKE_dpotrf
       double rcond;
       // info = LAPACKE_dpocon(LAPACK_ROW_MAJOR,'L',nnz,tmp_blck,nnz,A_norm1,&rcond);
       info = LAPACKE_dgecon(LAPACK_ROW_MAJOR,'1',nnz,tmp_blck,nnz,A_norm1,&rcond);
       
-      if (info =! 0) {
-	printf("The parameter %i had an illegal value",info);
-      }
-
-      // ###### Copy the Cholesky factor in ATA if condition number not bad : rcond = 1/cond > 1/10 <=> cond < 10
-      if (rcond > 0.1) {      
-	for (i7 = 0; i7 < nnz; ++i7) {
-	  for (i8 = 0; i8 < i7+1; ++i8) {
-	    ATA[i3+i7*nnz+i8] = tmp_blck[i7*nnz+i8];
+      // ###### Copy the Cholesky factor in ATA if condition number not bad : rcond = 1/cond > 1/1000 <=> cond < 1000
+      if (rcond > 1e-3) { // <=> cond < 1000
+	
+	// ###### Call LAPACK routines to compute Cholesky factorisation of tmp_blck
+	info = LAPACKE_dpotrf(LAPACK_ROW_MAJOR,'L',nnz,tmp_blck,nnz);
+	
+	if (info > 0) {
+	  // printf("The leading minor of order %i is not positive-definite, and the factorization could not be completed.",info);
+	  ATA[i3*nnz*nnz] = -1;
+	}
+	if (info < 0) {
+	  printf("The parameter %i had an illegal value.",-info);
+	}
+	if (info == 0) {
+	  // printf("The factorization went good.");
+	  for (i7 = 0; i7 < nnz; ++i7) {
+	    for (i8 = 0; i8 < i7+1; ++i8) {
+	      ATA[i3*nnz*nnz+i7*nnz+i8] = tmp_blck[i7*nnz+i8];
+	    }
 	  }
 	}
       }
       else {
-	  ATA[i3] = -1;
+	ATA[i3*nnz*nnz] = -1;
       }
     }
     else {
-      ATA[i3] = -1;
+      ATA[i3*nnz*nnz] = -1;
     }
   }
+
   return 0;
 }
 
@@ -529,13 +484,14 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *Z, int nb_defl, int np)
   out = (fftw_complex *) malloc(nti*sizeof(fftw_complex));  
   x = (double *) malloc(nti*sizeof(double));
   y = (double *) calloc(np,sizeof(double));
-  z = (double *) malloc(np*sizeof(double));  
-
-  
+  z = (double *) malloc(np*sizeof(double));
+  ATA = (double *)  malloc(np*nnz*nnz*sizeof(double));
+    
   for (i0 = 0; i0 < nb_blocks_loc; ++i0) {
     nti = tpltzblocks[i0].n; // Size of the block
+    
     ATA = (double *)  calloc(np*nnz*nnz,sizeof(double));
-      
+    
     // ###### Build ATA w.r.t. the local block i0
     Build_ATA_bloc(A,Nm1,ATA,row_indice,nti,np);
     
@@ -547,7 +503,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *Z, int nb_defl, int np)
       // get_ARPACK(...);
       
       for (i3 = 0; i3 < nti; ++i3) {
-	x[i3] = out[i3][0]; // Store the real part of the results of FFT in an array.
+    	x[i3] = out[i3][0]; // Store the real part of the results of FFT in an array.
       }
       
       // ###### Call of the function to do the local pointing : pointing of 1 block
@@ -559,7 +515,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *Z, int nb_defl, int np)
       
       // ###### Store the resulting vector in coarse space array CS
       for (i4 = 0; i4 < np; ++i4) {
-	CS[i0*nb_defl*np+i1*np+i4] = z[i4];
+    	CS[i0*nb_defl*np+i1*np+i4] = z[i4];
       }
 
     }
@@ -606,7 +562,7 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
     printf("The parameter %i had an illegal value",info);
   }
   
-  free(tau_tmp);
+  /* free(tau_tmp); */
   
   // ###### Get the Q-factor from Z
   info = LAPACKE_dorgqr(LAPACK_COL_MAJOR,nb_rows,nb_cols,nb_cols,Z,nb_rows,tau);
@@ -622,7 +578,7 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
     size_CS[0] += 1;
   }
   
-  free(R);
+  /* free(R); */
 
   double *CS;
   
