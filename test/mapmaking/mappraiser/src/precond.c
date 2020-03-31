@@ -307,7 +307,7 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, 
   nnz = A->nnz;
   
   for (i0 = 0; i0 < nb_rows; ++i0) {
-    locpix = A->indices[row_indice*nnz+i0*nnz];
+    locpix = A->indices[row_indice*nnz+i0*nnz]/nnz;
         
     // contribution of the pixel locpix to the block of size nnz*nnz of A_i.T*A_i at time row_indice+i0
     for (i1 = 0; i1 < nnz; ++i1) {
@@ -335,7 +335,7 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, 
 
   for (i3 = 0; i3 < np; ++i3) {
 
-    if (ATA[i3*nnz*nnz] > 3) {
+    if (ATA[i3*nnz*nnz] > nnz) {
       
       for (i4=0; i4 < nnz*nnz; ++i4) {
 	tmp_blck[i4] = ATA[i3*nnz*nnz+i4];	
@@ -495,32 +495,33 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *Z, int nb_defl, int np)
     // ###### Build ATA w.r.t. the local block i0
     Build_ATA_bloc(A,Nm1,ATA,row_indice,nti,np);
     
-    for (i1=0; i1<nb_defl; ++i1) {
-      // ###### Get the fourier mode of order i0 and take it as an eigenvector of the block
-      get_Fourier_mode(in,out,nti,i0);
+  /*   for (i1=0; i1<nb_defl; ++i1) { */
+  /*     // ###### Get the fourier mode of order i0 and take it as an eigenvector of the block */
+  /*     get_Fourier_mode(in,out,nti,i0); */
       
-      // ###### Get the eigenvector through ARPACK
-      // get_ARPACK(...);
+  /*     // ###### Get the eigenvector through ARPACK */
+  /*     // get_ARPACK(...); */
       
-      for (i3 = 0; i3 < nti; ++i3) {
-    	x[i3] = out[i3][0]; // Store the real part of the results of FFT in an array.
-      }
+  /*     for (i3 = 0; i3 < nti; ++i3) { */
+  /*   	x[i3] = out[i3][0]; // Store the real part of the results of FFT in an array. */
+  /*     } */
       
-      // ###### Call of the function to do the local pointing : pointing of 1 block
-      Apply_ATr_bloc(A,x,y,row_indice,nti); // Compute P_i^\top * Fourier mode n°i1
+  /*     // ###### Call of the function to do the local pointing : pointing of 1 block */
+  /*     Apply_ATr_bloc(A,x,y,row_indice,nti); // Compute P_i^\top * Fourier mode n°i1 */
 
       
-      // ###### Do the (A_i^T*A_i)^\dagger local product
-      Apply_ATA_bloc(A,ATA,y,z,np);
+  /*     // ###### Do the (A_i^T*A_i)^\dagger local product */
+  /*     Apply_ATA_bloc(A,ATA,y,z,np); */
       
-      // ###### Store the resulting vector in coarse space array CS
-      for (i4 = 0; i4 < np; ++i4) {
-    	CS[i0*nb_defl*np+i1*np+i4] = z[i4];
-      }
+  /*     // ###### Store the resulting vector in coarse space array CS */
+  /*     for (i4 = 0; i4 < np; ++i4) { */
+  /*   	CS[i0*nb_defl*np+i1*np+i4] = z[i4]; */
+  /*     } */
 
-    }
-    row_indice += nti;
+  /*   } */
+  /*   row_indice += nti; */
   }
+
   return 0;
 }
 

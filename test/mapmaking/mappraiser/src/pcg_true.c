@@ -73,7 +73,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   if(tmp !=NULL){
     x = tmp;
   }
-  
+
   int nb_defl;
   nb_defl = 5; // To give as argument of PCG_GLS_true later on
   int nb_blocks_loc;
