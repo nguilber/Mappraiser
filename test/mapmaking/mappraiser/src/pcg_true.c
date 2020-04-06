@@ -78,13 +78,15 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   nb_defl = 5; // To give as argument of PCG_GLS_true later on
   int nb_blocks_loc;
   nb_blocks_loc = Nm1.nb_blocks_loc;
-
+  
   double *Z;
   Z = (double *) malloc(sizeof(double)*n*nb_defl*nb_blocks_loc);
   
   // Build the unorthogonalized coarse space of the blocks on a proc
   Build_ALS(A,Nm1,Z,nb_defl,n);
 
+  /* printf("HERE --------> %i \n",rank); */
+  
   /* double tol_svd; */
   /* int *new_size; */
   /* tol_svd = 0.001; // To give as argument of PCG_GLS_true later on */

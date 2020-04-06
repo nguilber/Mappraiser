@@ -56,6 +56,19 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *Z, int nb_defl, int np);
 
 int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd, int *size_CS);
 
+// Load the transpose of a matrix in a new variable to be declared before : A and B are thought to be read in a ROW_MAJOR format
+int transpose(const double *A, int size_A, double* B, int size_B);
+
+// Solve a lower triangular linear system
+int lower_tr_solve(const double *A, int size_A, double *b, int size_b, double *x, int size_x);
+
+// Solve a upper triangular linear system
+int upper_tr_solve(const double *A, int size_A, double *b, int size_b, double *x, int size_x);
+
+
+
+
+
 // Communication routine for building the pixel blocks of the preconditioner
 int commScheme(Mat *A, double *vpixDiag, int pflag);
 
