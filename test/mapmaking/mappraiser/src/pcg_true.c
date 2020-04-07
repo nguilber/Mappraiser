@@ -85,16 +85,18 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   // Build the unorthogonalized coarse space of the blocks on a proc
   Build_ALS(A,Nm1,Z,nb_defl,n);
 
+  /* printf("The size of the coarse space on the proc %i is %i\n",rank,new_size); */
+  
   /* printf("HERE --------> %i \n",rank); */
   
-  /* double tol_svd; */
-  /* int *new_size; */
-  /* tol_svd = 0.001; // To give as argument of PCG_GLS_true later on */
+  double tol_svd;
+  int new_size;
+  tol_svd = 0.001; // To give as argument of PCG_GLS_true later on
 
-  /* // Orthogonalize the coarse space Z on a proc */
-  /* Orthogonalize_Space_loc(Z,n,nb_defl*nb_blocks_loc,tol_svd,new_size); */
+  // Orthogonalize the coarse space Z on a proc
+  Orthogonalize_Space_loc(Z,n,nb_defl*nb_blocks_loc,tol_svd,&new_size);
 
-  /* printf("The size of the coarse space on the proc %i is %i",rank,new_size[0]); */
+  /* printf("The size of the coarse space on the proc %i is %i\n",rank,new_size); */
 
   //map domain
   h = (double *) malloc(n * sizeof(double));      //descent direction

@@ -51,20 +51,23 @@ int DiagAtA(Mat *A, double *diag, int pflag);
 
 
 
+// Build (A_i.T * A_i) bloc of size nnz*nnz operator
+int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, int np);
 
+// Apply the product A_i.T * v for a timestream of one block
+int Apply_ATr_bloc(Mat *A, double *x, double *y, int size_y, int row_indice, int nb_rows);
+
+// Apply the product (A_i.T * A_i)^{-1} * v for a timestream of one block
+int Apply_ATA_bloc(Mat *A, double *ATA, double *y, double *z, int np);
+
+// Get the fourier mode of order index_mode through fftw3 package
+int get_Fourier_mode(fftw_complex *in, fftw_complex *out, int size, int index_mode);
+
+// Build the coarse space from eigenvector of the blocks
 int Build_ALS(Mat *A, Tpltz Nm1, double *Z, int nb_defl, int np);
 
+// Build a orthonormal basis of a coarse space Z
 int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd, int *size_CS);
-
-// Load the transpose of a matrix in a new variable to be declared before : A and B are thought to be read in a ROW_MAJOR format
-int transpose(const double *A, int size_A, double* B, int size_B);
-
-// Solve a lower triangular linear system
-int lower_tr_solve(const double *A, int size_A, double *b, int size_b, double *x, int size_x);
-
-// Solve a upper triangular linear system
-int upper_tr_solve(const double *A, int size_A, double *b, int size_b, double *x, int size_x);
-
 
 
 

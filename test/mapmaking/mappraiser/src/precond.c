@@ -376,7 +376,7 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, 
 
 	  int good_enough = 1; // good_enough stays 1 if there are no small scalar on the diagonal of the Cholesky factor. LAPACK seems to fail to catch some of thoses cases (info>0), therefore, it's not good_enough yet.
 	  for(i7 = 0; i7 < nnz; ++i7){
-	    if (tmp_blck[i7*nnz+i7] < 1e-8) {
+	    if (tmp_blck[i7*nnz+i7] < 1e-2) {
 	      good_enough = 0;
 	    }
 	  }
@@ -481,7 +481,7 @@ int Apply_ATA_bloc(Mat *A, double *ATA, double *y, double *z, int np)
       }
       if (info == 0) {
 
-      	// printf("The multiplication went good.");
+      	printf("The multiplication went good.");
 
       	// ###### Copy the results in output of the function z
       	for (i3 = 0; i3 < nnz; ++i3) {
@@ -492,7 +492,7 @@ int Apply_ATA_bloc(Mat *A, double *ATA, double *y, double *z, int np)
     }
     else {
       for (i4 = 0; i4 < nnz; ++i4) {
-    	z[i0*nnz+i4] = 0;// y[i0*nnz+i4];
+    	z[i0*nnz+i4] = 0; //y[i0*nnz+i4];
       }
     }
   }
@@ -575,17 +575,49 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *Z, int nb_defl, int n)
       
   /*   /\*   // ###### Get the eigenvector through ARPACK *\/ */
   /*   /\*   // get_ARPACK(...); *\/ */
+      double norm = 0;
       
       for (i3 = 0; i3 < nti; ++i3) {
     	x[i3] = out[i3][0]; // Store the real part of the results of FFT in an array.
+
+	/* if (x[i3] > 1e9) { */
+	/*   printf("Mother Fucker !\n"); */
+	/* } */
+	
+	// norm += out[i3][0]*out[i3][0]+out[i3][1]*out[i3][1];
       }
+
+      // printf("HERE -----> : %f\n",sqrt(norm));
 
       
       // ###### Call of the function to do the local pointing : pointing of 1 block
       Apply_ATr_bloc(A,x,y,n,row_indice,nti); // Compute P_i^\top * Fourier mode n°i1
 
+      for (i3 = 0; i3 < n; ++i3) {
+      	// norm += y[i3]*y[i3];
+
+	/* if (y[i3] > 1e9) { */
+	/*   printf("Mother Fucker !\n"); */
+	/* } */
+
+      }
+
+      /* printf("HERE -----> : %f\n",sqrt(norm)); */
+
+
       // ###### Do the (A_i^T*A_i)^\dagger local product
       Apply_ATA_bloc(A,ATA,y,z,np);
+
+      /* for (i3 = 0; i3 < n; ++i3) { */
+      /* 	norm += z[i3]*z[i3]; */
+
+      /* 	if (z[i3] > 1e9) { */
+      /* 	  printf("Mother Fucker !\n"); */
+      /* 	} */
+
+      /* } */
+
+      /* printf("HERE -----> : %f\n",sqrt(norm)); */
       
       // ###### Store the resulting vector in coarse space array CS
       for (i4 = 0; i4 < np; ++i4) {
@@ -614,8 +646,8 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
   // Compute non-pivoting QR factorization of coarse space Z
   info = LAPACKE_dgeqrfp(LAPACK_COL_MAJOR,nb_rows,nb_cols,Z,nb_rows,tau);
 
-  if (info =! 0) {
-    printf("The parameter %i had an illegal value",info);
+  if (info < 0) {
+    printf("The parameter %i had an illegal value",-info);
   }
   
   // ###### Extract R from data in COL_MAJOR
@@ -628,51 +660,51 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
     }
   }
   
-  /* // ###### Compute a RR-QR on the R-factor */
-  /* int *jpvt; */
-  /* jpvt = (int *) malloc(sizeof(int)*nb_cols); */
-  /* double *tau_tmp; */
-  /* tau_tmp = (double *) malloc(sizeof(double)*nb_cols); */
+  // ###### Compute a RR-QR on the R-factor
+  int *jpvt;
+  jpvt = (int *) malloc(sizeof(int)*nb_cols);
+  double *tau_tmp;
+  tau_tmp = (double *) malloc(sizeof(double)*nb_cols);
   
-  /* info = LAPACKE_dgeqp3(LAPACK_COL_MAJOR,nb_cols,nb_cols,R,nb_cols,jpvt,tau_tmp); */
+  info = LAPACKE_dgeqp3(LAPACK_COL_MAJOR,nb_cols,nb_cols,R,nb_cols,jpvt,tau_tmp);
 
-  /* if (info =! 0) { */
-  /*   printf("The parameter %i had an illegal value",info); */
-  /* } */
+  if (info < 0) {
+    printf("The parameter %i had an illegal value",-info);
+  }
   
-  /* /\* free(tau_tmp); *\/ */
+  free(tau_tmp);
   
-  /* // ###### Get the Q-factor from Z */
-  /* info = LAPACKE_dorgqr(LAPACK_COL_MAJOR,nb_rows,nb_cols,nb_cols,Z,nb_rows,tau); */
+  // ###### Get the Q-factor from Z
+  info = LAPACKE_dorgqr(LAPACK_COL_MAJOR,nb_rows,nb_cols,nb_cols,Z,nb_rows,tau);
 
-  /* if (info =! 0) { */
-  /*   printf("The parameter %i had an illegal value",info); */
-  /* } */
+  if (info < 0) {
+    printf("The parameter %i had an illegal value",info);
+  }
   
-  /* // ###### Select the colums of the Q-factor related to high enough singular values */
-  /* size_CS[0] = 0; */
+  // ###### Select the colums of the Q-factor related to high enough singular values
+  size_CS[0] = 0;
   
-  /* while (R[size_CS[0]*nb_cols+size_CS[0]] > tol_svd) {     */
-  /*   size_CS[0] += 1; */
-  /* } */
+  while (R[size_CS[0]*nb_cols+size_CS[0]] > tol_svd) {
+    size_CS[0] += 1;
+  }
   
-  /* /\* free(R); *\/ */
+  /* free(R); */
 
-  /* double *CS; */
+  double *CS;
   
-  /* CS = (double *) malloc(sizeof(double)*nb_rows*size_CS[0]); */
+  CS = (double *) malloc(sizeof(double)*nb_rows*size_CS[0]);
   
-  /* for (i2 = 0; i2 < size_CS[0]; ++i2) { */
-  /*   for (i3 = 0; i3 < nb_rows; ++i3) { */
-  /*     CS[i2*nb_rows+i3] = Z[jpvt[i2]*nb_rows+i3]; */
-  /*   } */
-  /* } */
+  for (i2 = 0; i2 < size_CS[0]; ++i2) {
+    for (i3 = 0; i3 < nb_rows; ++i3) {
+      CS[i2*nb_rows+i3] = Z[jpvt[i2]*nb_rows+i3];
+    }
+  }
 
-  /* for (i4 = 0; i4 < nb_rows*size_CS[0]; ++i4) { */
-  /*   Z[i4] = CS[i4]; */
-  /* } */
+  for (i4 = 0; i4 < nb_rows*size_CS[0]; ++i4) {
+    Z[i4] = CS[i4];
+  }
 
-  /* Z = (double *) realloc(Z,nb_rows*size_CS[0]); */
+  Z = (double *) realloc(Z,nb_rows*size_CS[0]);
 
   return 0;
 }
