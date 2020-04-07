@@ -81,6 +81,8 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   
   double *Z;
   Z = (double *) malloc(sizeof(double)*n*nb_defl*nb_blocks_loc);
+
+  printf("Number of pixels : %i\n",n/A->nnz);
   
   // Build the unorthogonalized coarse space of the blocks on a proc
   Build_ALS(A,Nm1,Z,nb_defl,n);
