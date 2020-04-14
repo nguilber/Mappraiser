@@ -297,7 +297,7 @@ int TrMatVecProd_loc(Mat *A, double *y, double * x)
 }
 
 // Build (A_i.T * A_i) bloc of size nnz*nnz operator
-int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, int np)
+int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, int np, int rank, int bloc)
 {
   int nnz;                              // Number of coef per line of A
   int i0,i1,i2,i3,i4,i5,i6,i7,i8;       // some loop index
@@ -307,12 +307,17 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, 
   nnz = A->nnz;
   
   for (i0 = 0; i0 < nb_rows; ++i0) {
-    if (A->trash_pix == 1) {
-      locpix = A->indices[(row_indice+i0)*nnz]/nnz-1;
-    }
-    else{
-      locpix = A->indices[(row_indice+i0)*nnz]/nnz;
-    }    
+
+    locpix = A->indices[(row_indice+i0)*nnz]/nnz-(A->trash_pix);
+    
+    /* if (A->trash_pix == 1) { */
+    /*   locpix = A->indices[(row_indice+i0)*nnz]/nnz-1; */
+    /* } */
+    /* else{ */
+    /*   locpix = A->indices[(row_indice+i0)*nnz]/nnz; */
+    /* }     */
+
+    /* printf("r: %i, b: %i, p: %i, ti: %i, tp: %f, q: %f, u: %f \n\n", rank,bloc,locpix,(row_indice+i0)*nnz,A->values[(row_indice+i0)*nnz],A->values[(row_indice+i0)*nnz+1],A->values[(row_indice+i0)*nnz+2]); */
 
     if (locpix >= 0) {
       // contribution of the pixel locpix to the block of size nnz*nnz of A_i.T*A_i at time row_indice+i0
@@ -322,6 +327,28 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, 
     	}
       }
 
+      /* vpixBlock[nnz*A->indices[i*nnz+j]+l] += A->values[i*nnz+j]*A->values[i*nnz+l]*diagNm1; */
+/* //a piecewise stationary period */
+/*     for(i = istart; i<istart+il; i++){ */
+/*       lhits[(int)(A->indices[i*nnz]/nnz)] += 1; */
+/*       for(j=0;j<nnz;j++){ */
+/*         for(l=0;l<nnz;l++){ */
+/*           vpixBlock[nnz*A->indices[i*nnz+j]+l] += A->values[i*nnz+j]*A->values[i*nnz+l]*diagNm1; */
+/*         } */
+/*       } */
+/*     } */
+
+/* //continue until the next period if exist or to the last line of V */
+/*     for(i = istart+il; i<istartn; i++){ */
+/*       lhits[(int)(A->indices[i*nnz]/nnz)] += 1; */
+/*       for(j=0;j<nnz;j++){ */
+/*         for(l=0;l<nnz;l++){ */
+/*           vpixBlock[nnz*A->indices[i*nnz+j]+l] += A->values[i*nnz+j]*A->values[i*nnz+l]; */
+/*         } */
+/*       } */
+/*     } */
+      
+      
       /*
     	When nnz = 3, it's equivalent to those line of code :
     	ATA[locpix*nnz*nnz] += A->values[locpix*nnz]*A->values[locpix*nnz];
@@ -343,23 +370,36 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, 
 
   for (i3 = 0; i3 < np; ++i3) {
 
-    if (ATA[i3*nnz*nnz] > nnz) {
+    if (ATA[i3*nnz*nnz] > nnz-1) {
       
       for (i4=0; i4 < nnz*nnz; ++i4) {
   	tmp_blck[i4] = ATA[i3*nnz*nnz+i4];
       }
+
+      /* int i,j,k; */
+      /* for (i = 0; i < nnz; ++i) { */
+      /* 	for (j = 0; j < nnz; ++j) { */
+      /* 	  printf("%f ",tmp_blck[i*nnz+j]); */
+      /* 	} */
+      /* 	printf("\n"); */
+      /* } */
+
+      /* printf("\n"); */
+      
       
       // ###### Compute the norm 1 of tmp_blk
       double A_norm1;
       A_norm1 = LAPACKE_dlange(LAPACK_ROW_MAJOR,'1',nnz,nnz,tmp_blck,nnz);
       
-      // ###### Compute the condition number of the block to know if we'll have to apply it in Apply_ATA_bloc : need to have the cholesky factorization done first, that's why it's not before LAPACKE_dpotrf
+      // ###### Compute the condition number of the block to know if we'll have to apply it in Apply_ATA_bloc
       double rcond;
       // info = LAPACKE_dpocon(LAPACK_ROW_MAJOR,'L',nnz,tmp_blck,nnz,A_norm1,&rcond);
       info = LAPACKE_dgecon(LAPACK_ROW_MAJOR,'1',nnz,tmp_blck,nnz,A_norm1,&rcond);
+
+      /* printf("HERE -----> %f\n", rcond); */
       
       // ###### Copy the Cholesky factor in ATA if condition number not bad : rcond = 1/cond > 1/1000 <=> cond < 1000
-      if (rcond > 1e-3) { // <=> cond < 1000
+      if (rcond > 1e-1) { // <=> cond < 10
 	
   	// ###### Call LAPACK routines to compute Cholesky factorisation of tmp_blck
   	info = LAPACKE_dpotrf(LAPACK_ROW_MAJOR,'L',nnz,tmp_blck,nnz);
@@ -369,7 +409,7 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, 
   	  ATA[i3*nnz*nnz] = -1;
   	}
   	if (info < 0) {
-  	  printf("The parameter %i had an illegal value.",-info);
+  	  printf("Compute Cholesky factorisation of tmp_blck : The parameter %i had an illegal value.\n",-info);
   	}
   	if (info == 0) {
   	  // printf("The factorization went good.");
@@ -443,6 +483,7 @@ int Apply_ATr_bloc(Mat *A, double *x, double *y, int size_y, int row_indice, int
   return 0;
 }
 
+
 // Apply the product (A_i.T * A_i)^{-1} * v for a timestream of one block
 int Apply_ATA_bloc(Mat *A, double *ATA, double *y, double *z, int np)
 {
@@ -477,11 +518,11 @@ int Apply_ATA_bloc(Mat *A, double *ATA, double *y, double *z, int np)
       info = LAPACKE_dpotrs(LAPACK_ROW_MAJOR,'L',nnz,nrhs,tmp_blck,nnz,tmp_vec,1);
 
       if (info < 0) {
-      	printf("The parameter %i had an illegal value.",-info);
+      	printf("Apply (P_i.T * P_i)^{-1} * v using the cholesky factor :\nThe parameter %i had an illegal value.\n.",-info);
       }
       if (info == 0) {
 
-      	printf("The multiplication went good.");
+      	/* printf("The multiplication went good."); */
 
       	// ###### Copy the results in output of the function z
       	for (i3 = 0; i3 < nnz; ++i3) {
@@ -497,8 +538,8 @@ int Apply_ATA_bloc(Mat *A, double *ATA, double *y, double *z, int np)
     }
   }
 
-  /* free(tmp_blck); */
-  /* free(tmp_vec); */
+  free(tmp_blck);
+  free(tmp_vec);
   
   return 0;
 }
@@ -524,15 +565,14 @@ int get_Fourier_mode(fftw_complex *in, fftw_complex *out, int size, int index_mo
 }
 
 // Build the coarse space from eigenvector of the blocks
-int Build_ALS(Mat *A, Tpltz Nm1, double *Z, int nb_defl, int n)
+int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
 {
   int nb_blocks_loc;                  // Number of local bloc, ie on a the proc
   Block *tpltzblocks;                 // Pointer to the tpltzblocks struct
   int nti;                            // size of the time stream
   int row_indice;                     // Index of the first line in depointing matrix A for the bloc we look at
   int nnz;                            // Number of non-zeros per line in A
-  int np;                             // number of pixels
-  double *CS;                         // Array for the coarse space before reduction of the number of vector through QR     
+  int np;                             // number of pixels   
   double *ATA;                        // Array to store the (A_i.T * A_i) block operator
   fftw_complex *in;                   // Vector to store entry of the FFT                                                   
   fftw_complex *out;                  // Vector to store output of the FFT                                                  
@@ -546,46 +586,38 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *Z, int nb_defl, int n)
   row_indice = 0;
   nnz = A->nnz;
   np = n/nnz;
-  CS = (double *) malloc(sizeof(double)*np*nb_blocks_loc*nb_defl);
   y = (double *) calloc(n,sizeof(double));
   z = (double *) malloc(n*sizeof(double));
   ATA = (double *)  malloc(np*nnz*nnz*sizeof(double));
+
+  int i;
   
   for (i0 = 0; i0 < nb_blocks_loc; ++i0) {
     nti = tpltzblocks[i0].n; // Size of the block
     
     x = (double *) malloc(nti*sizeof(double));
 
-    /* printf("%i\n",nti); */
-    
     ATA = (double *)  calloc(np*nnz*nnz,sizeof(double));
 
-  /*   /\* printf("%i\n",(np+1)*nnz*nnz); *\/ */
-    
     // ###### Build ATA w.r.t. the local block i0
-    Build_ATA_bloc(A,Nm1,ATA,row_indice,nti,np);
-
+    Build_ATA_bloc(A,Nm1,ATA,row_indice,nti,np,rank,i0);
+    
     in = (fftw_complex *) calloc(nti,sizeof(fftw_complex));
-    out = (fftw_complex *) calloc(nti,sizeof(fftw_complex));
+    out = (fftw_complex *) calloc(nti,sizeof(fftw_complex));    
     
     for (i1=0; i1<nb_defl; ++i1) {
       
       // ###### Get the fourier mode of order i0 and take it as an eigenvector of the block
       get_Fourier_mode(in,out,nti,i0);
       
-  /*   /\*   // ###### Get the eigenvector through ARPACK *\/ */
-  /*   /\*   // get_ARPACK(...); *\/ */
-      double norm = 0;
+      // ###### Get the eigenvector through ARPACK
+      // get_ARPACK(...);
+      
       
       for (i3 = 0; i3 < nti; ++i3) {
     	x[i3] = out[i3][0]; // Store the real part of the results of FFT in an array.
-
-	/* if (x[i3] > 1e9) { */
-	/*   printf("Mother Fucker !\n"); */
-	/* } */
-	
-	// norm += out[i3][0]*out[i3][0]+out[i3][1]*out[i3][1];
       }
+
 
       // printf("HERE -----> : %f\n",sqrt(norm));
 
@@ -593,83 +625,153 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *Z, int nb_defl, int n)
       // ###### Call of the function to do the local pointing : pointing of 1 block
       Apply_ATr_bloc(A,x,y,n,row_indice,nti); // Compute P_i^\top * Fourier mode n°i1
 
-      for (i3 = 0; i3 < n; ++i3) {
-      	// norm += y[i3]*y[i3];
-
-	/* if (y[i3] > 1e9) { */
-	/*   printf("Mother Fucker !\n"); */
-	/* } */
-
-      }
-
-      /* printf("HERE -----> : %f\n",sqrt(norm)); */
-
-
       // ###### Do the (A_i^T*A_i)^\dagger local product
       Apply_ATA_bloc(A,ATA,y,z,np);
-
-      /* for (i3 = 0; i3 < n; ++i3) { */
-      /* 	norm += z[i3]*z[i3]; */
-
-      /* 	if (z[i3] > 1e9) { */
-      /* 	  printf("Mother Fucker !\n"); */
-      /* 	} */
-
-      /* } */
-
-      /* printf("HERE -----> : %f\n",sqrt(norm)); */
       
       // ###### Store the resulting vector in coarse space array CS
-      for (i4 = 0; i4 < np; ++i4) {
-    	CS[i0*nb_defl*np+i1*np+i4] = z[i4];
+      for (i4 = 0; i4 < n; ++i4) {
+    	CS[i0*nb_defl*n+i1*n+i4] = z[i4];
       }
-
     }
   
     row_indice += nti;
   }
   
-  /* free(); */
+  free(z);
+  free(y);
+  free(x);
+  free(out);
+  free(in);
+  free(ATA);
 
   return 0;
 }
 
 // Build a orthonormal basis of a coarse space Z
-int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd, int *size_CS)
+int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd, int rank)
 {
   int i0,i1,i2,i3,i4;                              // Loop index
   double *tau;                                     // Coef. of the Householder reflection in the Q-factor
   int info;                                        // LAPACK return variable
-    
+  int size_CS;
+  
+  /* double *M; */
+  /* int line = 4; */
+  /* int col = 3; */
+  /* M = (double *) calloc(line*col,sizeof(double)); */
+  /* M[0] = 1; */
+  /* M[1] = 0; */
+  /* M[2] = 1; */
+  /* M[3] = 0; */
+  /* M[4] = 0; */
+  /* M[5] = 1; */
+  /* M[6] = 0; */
+  /* M[7] = 1; */
+  /* M[8] = 2; */
+  /* M[9] = 0; */
+  /* M[10] = 2; */
+  /* M[11] = 0; */
+  
   tau = (double *) malloc(sizeof(double)*nb_cols);
+
+  /* tau = (double *) malloc(sizeof(double)*col); */
+  
+  /* // Compute non-pivoting QR factorization of coarse space Z */
+  /* info = LAPACKE_dgeqrfp(LAPACK_COL_MAJOR,line,col,M,line,tau); */
 
   // Compute non-pivoting QR factorization of coarse space Z
   info = LAPACKE_dgeqrfp(LAPACK_COL_MAJOR,nb_rows,nb_cols,Z,nb_rows,tau);
 
   if (info < 0) {
-    printf("The parameter %i had an illegal value",-info);
+    printf("r: %i - Compute non-pivoting QR factorization of coarse space Z : The parameter %i had an illegal value.\n",rank,-info);
   }
+
+  /* for (i0 = 0; i0 < 8; ++i0) { */
+  /*   printf("%f \n", M[i0]); */
+  /* } */
+
+  /* printf("r: %i, R from M :\n", rank); */
+
+  /* for (i0 = 0; i0 < col; ++i0) { */
+  /*   for (i1 = 0; i1 < col; ++i1) { */
+  /*     printf("%f ", M[i0+i1*line]); */
+  /*   } */
+  /*   printf("\n"); */
+  /* } */
   
   // ###### Extract R from data in COL_MAJOR
   double *R;
   R = (double *) calloc(nb_cols*nb_cols,sizeof(double));
+
+  /* // ###### Extract R from data in COL_MAJOR */
+  /* double *R; */
+  /* R = (double *) calloc(col*col,sizeof(double)); */
+
+  double test = 0;
+
+  /* printf("r: %i\n", rank); */
   
   for (i0 = 0; i0 < nb_cols; ++i0) {
+    // test += Z[i0+i0*nb_rows];
+    // printf("%f ", Z[i0+i0*nb_rows]);
     for (i1 = 0; i1 < i0+1; ++i1) {
-      R[i0+i1*nb_cols] = Z[i0+i1*nb_cols];
+      R[i1+i0*nb_cols] = Z[i1+i0*nb_rows];
     }
   }
+
+  /* printf("\n"); */
+  
+  /* for (i0 = 0; i0 < col; ++i0) { */
+  /*   // test += Z[i0+i0*nb_cols]; */
+  /*   for (i1 = 0; i1 < i0+1; ++i1) { */
+  /*     R[i1+i0*col] = M[i1+i0*line]; */
+  /*   } */
+  /* } */
+
+  /* printf("r: %i\n", rank); */
+
+  /* printf("r: %i, R from R :\n", rank); */
+  
+  /* for (i0 = 0; i0 < col; ++i0) { */
+  /*   for (i1 = 0; i1 < col; ++i1) { */
+  /*     printf("%f ", R[i0+i1*col]); */
+  /*   } */
+  /*   printf("\n"); */
+  /* } */
+
+  /* if (rank == 1) { */
+  /*   printf("r: %i\n",rank); */
+    
+  /*   for (i0 = 0; i0 < nb_cols; ++i0) { */
+  /*     printf("%f ",R[i0*nb_cols+i0]); */
+  /*   } */
+  /*   printf("\n"); */
+  /* } */
+  
+  /* return 0; */
+
+  /* printf("\n"); */
+  
+  /* printf("HERE BEFORE------> r: %i, %f\n", rank,test); */
   
   // ###### Compute a RR-QR on the R-factor
   int *jpvt;
-  jpvt = (int *) malloc(sizeof(int)*nb_cols);
+  jpvt = (int *) calloc(nb_cols,sizeof(int));
   double *tau_tmp;
   tau_tmp = (double *) malloc(sizeof(double)*nb_cols);
   
   info = LAPACKE_dgeqp3(LAPACK_COL_MAJOR,nb_cols,nb_cols,R,nb_cols,jpvt,tau_tmp);
 
+  /* test = 0; */
+  
+  /* for (i0 = 0; i0 < nb_cols; ++i0) { */
+  /*   test += R[i0+i0*nb_cols]; */
+  /* } */
+
+  /* printf("HERE AFTER ------> r: %i, %f\n", rank,test); */
+
   if (info < 0) {
-    printf("The parameter %i had an illegal value",-info);
+    printf("r: %i - Compute a RR-QR on the R-factor : The parameter %i had an illegal value.\n",rank,-info);
   }
   
   free(tau_tmp);
@@ -678,112 +780,50 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
   info = LAPACKE_dorgqr(LAPACK_COL_MAJOR,nb_rows,nb_cols,nb_cols,Z,nb_rows,tau);
 
   if (info < 0) {
-    printf("The parameter %i had an illegal value",info);
+    printf("r: %i - Get the Q-factor from Z : The parameter %i had an illegal value.\n",rank,-info);
   }
   
   // ###### Select the colums of the Q-factor related to high enough singular values
-  size_CS[0] = 0;
+  size_CS = 0;
+
+  /* if (rank == 1) { */
+  /*   printf("r: %i\n",rank); */
+    
+  /*   for (i0 = 0; i0 < nb_cols; ++i0) { */
+  /*     printf("%f ",R[i0*nb_cols+i0]); */
+  /*   } */
+  /*   printf("\n"); */
+  /* } */
   
-  while (R[size_CS[0]*nb_cols+size_CS[0]] > tol_svd) {
-    size_CS[0] += 1;
+  while ( (abs(R[size_CS*nb_cols+size_CS]) > tol_svd) * (size_CS<nb_cols) ) {
+    // printf("%i ", (R[size_CS*nb_cols+size_CS]>tol_svd)* (size_CS<nb_cols));
+    size_CS += 1;
   }
+  // printf("\n");
+  // printf("%i ", (R[size_CS*nb_cols+size_CS]>tol_svd)* (size_CS<nb_cols));
   
   /* free(R); */
 
   double *CS;
   
-  CS = (double *) malloc(sizeof(double)*nb_rows*size_CS[0]);
+  CS = (double *) malloc(sizeof(double)*nb_rows*size_CS);
   
-  for (i2 = 0; i2 < size_CS[0]; ++i2) {
+  for (i2 = 0; i2 < size_CS; ++i2) {
     for (i3 = 0; i3 < nb_rows; ++i3) {
       CS[i2*nb_rows+i3] = Z[jpvt[i2]*nb_rows+i3];
     }
   }
 
-  for (i4 = 0; i4 < nb_rows*size_CS[0]; ++i4) {
+  for (i4 = 0; i4 < nb_rows*size_CS; ++i4) {
     Z[i4] = CS[i4];
   }
 
-  Z = (double *) realloc(Z,nb_rows*size_CS[0]);
+  Z = (double *) realloc(Z,nb_rows*size_CS);
 
-  return 0;
-}
+  printf("The size of the coarse space on the proc %i is %i\n",rank,size_CS);
 
-// Load the transpose of a matrix in a new variable to be declared before : A and B are thought to be read in a ROW_MAJOR format
-int transpose(const double *A, int size_A, double* B, int size_B){
-  int i0,i1;
+  return size_CS;
   
-  if (size_A =! size_B) {
-    printf("ERROR DIMENSIONS : Your matrices array have the wrong dimensions.");
-  }
-  else{
-    for (i0 = 0; i0 < size_A; ++i0) {
-      for (i1 = 0; i1 < size_A; ++i0) {
-	B[i0*size_A+i1] = A[i1*size_A+i0];
-      }
-    }
-  }
-  return 0;
-}
-
-// Solve a lower triangular linear system
-int lower_tr_solve(const double *A, int size_A, double *b, int size_b, double *x, int size_x){
-  int i0,i1;
-  
-  if (size_A =! size_b) {
-    printf("ERROR DIMENSIONS : your input does not form a linear system due to wrong size array.");
-  }
-  if (size_x =! size_b) {
-    printf("ERROR DIMENSIONS : Please allocated the right size for your solution array");
-  }
-
-  for (i0 = 0; i1 < size_x; ++i0) {
-    x[i0] = 5;
-  }
-
-
-  /* for (i0 = 0; i0 < size_A; ++i0) { */
-  /*   for (i1 = 0; i1 < i0; ++i1) { */
-  /*     x[i0] += A[i0*size_A+i1]*x[i1]; */
-  /*   } */
-  /*   if (A[i0*size_A+i0] < 1e-6) { */
-  /*     printf("WARNING : Your diagonal has small values and your operator might be indefinite !"); */
-  /*     x[i0] = (1/A[i0+size_A*i0])*(b[i0]-x[i0]); */
-  /*   } */
-  /*   else{ */
-  /*     x[i0] = (1/A[i0+size_A*i0])*(b[i0]-x[i0]); */
-  /*   } */
-  /* } */
-  
-  return 0;
-}
-
-// Solve a upper triangular linear system
-int upper_tr_solve(const double *A, int size_A, double *b, int size_b, double *x, int size_x){
-  int i0,i1;
-  
-  if (size_A =! size_b) {
-    printf("ERROR DIMENSIONS : your input does not form a lineay system due to wrong size array.");
-  }
-  if (size_x =! size_b) {
-    printf("ERROR DIMENSIONS : Please allocated the right size for your solution array");
-  }
-
-  for (i0 = size_A-1; i0 > -1; --i0) {
-    for (i1 = size_A-1; i1 > i0-2; --i1) {
-      x[i0] += A[i0*size_A+i1]*x[i1];
-    }
-    
-    if (A[i0*size_A+i0] < 1e-6) {
-      printf("WARNING : Your diagonal has small values and your operator might be indefinite !");
-      x[i0] = (1/A[i0+size_A*i0])*(b[i0]-x[i0]);
-    }
-    else{
-      x[i0] = (1/A[i0+size_A*i0])*(b[i0]-x[i0]);
-    }
-  }
-  
-  return 0;
 }
 
 

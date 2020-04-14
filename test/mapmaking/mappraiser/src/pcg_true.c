@@ -65,6 +65,13 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
  // precondjacobilike_avg( A, Nm1, c);
  // Compute preconditioner and process degenerate pixels
   precondblockjacobilike(A, Nm1, &BJ, b, cond, lhits);
+
+  /* for (i = 0; i < Nm1.local_V_size; ++i) { */
+  /*   for (j = 0; j < A->nnz; ++j) { */
+  /*     printf("Is nan ? ----> %i\n", isnan(A->values[i*(A->nnz)+j])); */
+  /*   } */
+  /* } */
+
   
 // Redefine number of pixels in the map
   n=A->lcount-(A->nnz)*(A->trash_pix);
@@ -82,24 +89,18 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   double *Z;
   Z = (double *) malloc(sizeof(double)*n*nb_defl*nb_blocks_loc);
 
-  printf("Number of pixels : %i\n",n/A->nnz);
+  /* printf("Number of pixels : %i\n",n/A->nnz); */
   
   // Build the unorthogonalized coarse space of the blocks on a proc
-  Build_ALS(A,Nm1,Z,nb_defl,n);
-
-  /* printf("The size of the coarse space on the proc %i is %i\n",rank,new_size); */
-  
-  /* printf("HERE --------> %i \n",rank); */
+  Build_ALS(A,Nm1,Z,nb_defl,n,rank);
   
   double tol_svd;
   int new_size;
-  tol_svd = 0.001; // To give as argument of PCG_GLS_true later on
+  tol_svd = 1e-10; // To give as argument of PCG_GLS_true later on
 
   // Orthogonalize the coarse space Z on a proc
-  Orthogonalize_Space_loc(Z,n,nb_defl*nb_blocks_loc,tol_svd,&new_size);
-
-  /* printf("The size of the coarse space on the proc %i is %i\n",rank,new_size); */
-
+  new_size = Orthogonalize_Space_loc(Z,n,nb_defl*nb_blocks_loc,tol_svd,rank);
+  
   //map domain
   h = (double *) malloc(n * sizeof(double));      //descent direction
   g = (double *) malloc(n * sizeof(double));
