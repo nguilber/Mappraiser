@@ -82,12 +82,17 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   }
 
   int nb_defl;
-  nb_defl = 5; // To give as argument of PCG_GLS_true later on
+  nb_defl = 20; // To give as argument of PCG_GLS_true later on
   int nb_blocks_loc;
   nb_blocks_loc = Nm1.nb_blocks_loc;
   
   double *Z;
   Z = (double *) malloc(sizeof(double)*n*nb_defl*nb_blocks_loc);
+
+  /* if (Z != NULL) { */
+  /*   printf("Fuck\n"); */
+  /*   fflush(stdout); */
+  /* } */
 
   /* printf("Number of pixels : %i\n",n/A->nnz); */
   
@@ -100,6 +105,20 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
   // Orthogonalize the coarse space Z on a proc
   new_size = Orthogonalize_Space_loc(Z,n,nb_defl*nb_blocks_loc,tol_svd,rank);
+
+  printf("r: %i, %i\n",rank,new_size);
+  
+  /* int *size_CS; */
+  /* size_CS = (int *) calloc(nb_defl*nb_blocks_loc,sizeof(int)); */
+
+  /* ++size_CS[new_size-1]; */
+
+  /* printf("r: %i\n",rank); */
+  /* for (i = 0; i < nb_defl*nb_blocks_loc; ++i) { */
+  /*   printf("%i ", size_CS[i]); */
+  /* } */
+  /* printf("\n"); */
+
   
   //map domain
   h = (double *) malloc(n * sizeof(double));      //descent direction

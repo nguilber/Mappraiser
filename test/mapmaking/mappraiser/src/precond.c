@@ -309,15 +309,6 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, 
   for (i0 = 0; i0 < nb_rows; ++i0) {
 
     locpix = A->indices[(row_indice+i0)*nnz]/nnz-(A->trash_pix);
-    
-    /* if (A->trash_pix == 1) { */
-    /*   locpix = A->indices[(row_indice+i0)*nnz]/nnz-1; */
-    /* } */
-    /* else{ */
-    /*   locpix = A->indices[(row_indice+i0)*nnz]/nnz; */
-    /* }     */
-
-    /* printf("r: %i, b: %i, p: %i, ti: %i, tp: %f, q: %f, u: %f \n\n", rank,bloc,locpix,(row_indice+i0)*nnz,A->values[(row_indice+i0)*nnz],A->values[(row_indice+i0)*nnz+1],A->values[(row_indice+i0)*nnz+2]); */
 
     if (locpix >= 0) {
       // contribution of the pixel locpix to the block of size nnz*nnz of A_i.T*A_i at time row_indice+i0
@@ -325,29 +316,7 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, 
     	for (i2 = 0; i2 < nnz; ++i2) {
     	  ATA[locpix*nnz*nnz+i1*nnz+i2] += (A->values[(row_indice+i0)*nnz+i1])*(A->values[(row_indice+i0)*nnz+i2]);
     	}
-      }
-
-      /* vpixBlock[nnz*A->indices[i*nnz+j]+l] += A->values[i*nnz+j]*A->values[i*nnz+l]*diagNm1; */
-/* //a piecewise stationary period */
-/*     for(i = istart; i<istart+il; i++){ */
-/*       lhits[(int)(A->indices[i*nnz]/nnz)] += 1; */
-/*       for(j=0;j<nnz;j++){ */
-/*         for(l=0;l<nnz;l++){ */
-/*           vpixBlock[nnz*A->indices[i*nnz+j]+l] += A->values[i*nnz+j]*A->values[i*nnz+l]*diagNm1; */
-/*         } */
-/*       } */
-/*     } */
-
-/* //continue until the next period if exist or to the last line of V */
-/*     for(i = istart+il; i<istartn; i++){ */
-/*       lhits[(int)(A->indices[i*nnz]/nnz)] += 1; */
-/*       for(j=0;j<nnz;j++){ */
-/*         for(l=0;l<nnz;l++){ */
-/*           vpixBlock[nnz*A->indices[i*nnz+j]+l] += A->values[i*nnz+j]*A->values[i*nnz+l]; */
-/*         } */
-/*       } */
-/*     } */
-      
+      }      
       
       /*
     	When nnz = 3, it's equivalent to those line of code :
@@ -374,18 +343,7 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, 
       
       for (i4=0; i4 < nnz*nnz; ++i4) {
   	tmp_blck[i4] = ATA[i3*nnz*nnz+i4];
-      }
-
-      /* int i,j,k; */
-      /* for (i = 0; i < nnz; ++i) { */
-      /* 	for (j = 0; j < nnz; ++j) { */
-      /* 	  printf("%f ",tmp_blck[i*nnz+j]); */
-      /* 	} */
-      /* 	printf("\n"); */
-      /* } */
-
-      /* printf("\n"); */
-      
+      }      
       
       // ###### Compute the norm 1 of tmp_blk
       double A_norm1;
@@ -398,14 +356,14 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, 
 
       /* printf("HERE -----> %f\n", rcond); */
       
-      // ###### Copy the Cholesky factor in ATA if condition number not bad : rcond = 1/cond > 1/1000 <=> cond < 1000
+      // ###### Copy the Cholesky factor in ATA if condition number not bad : rcond = 1/cond
       if (rcond > 1e-1) { // <=> cond < 10
 	
   	// ###### Call LAPACK routines to compute Cholesky factorisation of tmp_blck
   	info = LAPACKE_dpotrf(LAPACK_ROW_MAJOR,'L',nnz,tmp_blck,nnz);
 	
   	if (info > 0) {
-  	  // printf("The leading minor of order %i is not positive-definite, and the factorization could not be completed.",info);
+  	  printf("The leading minor of order %i is not positive-definite, and the factorization could not be completed.",info);
   	  ATA[i3*nnz*nnz] = -1;
   	}
   	if (info < 0) {
@@ -461,10 +419,6 @@ int Apply_ATr_bloc(Mat *A, double *x, double *y, int size_y, int row_indice, int
     pix_index = A->indices[(row_indice+i0)*nnz]/nnz;
     
     for(i1 = 0; i1 < nnz; ++i1){
-
-      /* if (A->indices[(row_indice+i0)*nnz+i1]>=size_y) { */
-      /* 	printf("line of A : %i\n size_y %i\n",A->indices[(row_indice+i0)*nnz+i1],size_y); */
-      /* } */
       
       // if there are trashed pixels and that we watch a pixel, we need to shift indices by 1 due to presence of fictitious pixel at index 0
       if (A->trash_pix == 1) {
@@ -588,10 +542,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   np = n/nnz;
   y = (double *) calloc(n,sizeof(double));
   z = (double *) malloc(n*sizeof(double));
-  ATA = (double *)  malloc(np*nnz*nnz*sizeof(double));
-
-  int i;
-  
+    
   for (i0 = 0; i0 < nb_blocks_loc; ++i0) {
     nti = tpltzblocks[i0].n; // Size of the block
     
@@ -609,18 +560,13 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
       
       // ###### Get the fourier mode of order i0 and take it as an eigenvector of the block
       get_Fourier_mode(in,out,nti,i0);
-      
-      // ###### Get the eigenvector through ARPACK
-      // get_ARPACK(...);
-      
-      
+
       for (i3 = 0; i3 < nti; ++i3) {
     	x[i3] = out[i3][0]; // Store the real part of the results of FFT in an array.
       }
-
-
-      // printf("HERE -----> : %f\n",sqrt(norm));
-
+      
+      // ###### Get the eigenvector through ARPACK
+      // get_ARPACK(...);
       
       // ###### Call of the function to do the local pointing : pointing of 1 block
       Apply_ATr_bloc(A,x,y,n,row_indice,nti); // Compute P_i^\top * Fourier mode n°i1
@@ -680,7 +626,7 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
   /* info = LAPACKE_dgeqrfp(LAPACK_COL_MAJOR,line,col,M,line,tau); */
 
   // Compute non-pivoting QR factorization of coarse space Z
-  info = LAPACKE_dgeqrfp(LAPACK_COL_MAJOR,nb_rows,nb_cols,Z,nb_rows,tau);
+  info = LAPACKE_dgeqrf(LAPACK_COL_MAJOR,nb_rows,nb_cols,Z,nb_rows,tau);
 
   if (info < 0) {
     printf("r: %i - Compute non-pivoting QR factorization of coarse space Z : The parameter %i had an illegal value.\n",rank,-info);
@@ -707,7 +653,7 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
   /* double *R; */
   /* R = (double *) calloc(col*col,sizeof(double)); */
 
-  double test = 0;
+  /* double test = 0; */
 
   /* printf("r: %i\n", rank); */
   
@@ -779,9 +725,11 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
   // ###### Get the Q-factor from Z
   info = LAPACKE_dorgqr(LAPACK_COL_MAJOR,nb_rows,nb_cols,nb_cols,Z,nb_rows,tau);
 
-  if (info < 0) {
-    printf("r: %i - Get the Q-factor from Z : The parameter %i had an illegal value.\n",rank,-info);
-  }
+  /* if (info < 0) { */
+  /*   printf("r: %i - Get the Q-factor from Z : The parameter %i had an illegal value.\n",rank,-info); */
+  /* } */
+
+  free(tau);
   
   // ###### Select the colums of the Q-factor related to high enough singular values
   size_CS = 0;
@@ -799,28 +747,48 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
     // printf("%i ", (R[size_CS*nb_cols+size_CS]>tol_svd)* (size_CS<nb_cols));
     size_CS += 1;
   }
+
+  /* printf("r: %i, %i\n", rank, size_CS); */
+  /* fflush(stdout); */
+  
   // printf("\n");
   // printf("%i ", (R[size_CS*nb_cols+size_CS]>tol_svd)* (size_CS<nb_cols));
   
-  /* free(R); */
+  free(R);
 
   double *CS;
   
   CS = (double *) malloc(sizeof(double)*nb_rows*size_CS);
   
   for (i2 = 0; i2 < size_CS; ++i2) {
+    // printf("r: %i, jpvt : %i\n", rank,jpvt[i2]);
     for (i3 = 0; i3 < nb_rows; ++i3) {
-      CS[i2*nb_rows+i3] = Z[jpvt[i2]*nb_rows+i3];
+      CS[i2*nb_rows+i3] = Z[(jpvt[i2]-1)*nb_rows+i3];
     }
   }
 
+  free(jpvt);
+  
+  /* for (i2 = 0; i2 < size_CS; ++i2) { */
+  /*   for (i3 = 0; i3 < nb_rows; ++i3) { */
+  /*     Z[i2*nb_rows+i3] = 1; */
+  /*     CS[i2*nb_rows+i3] = 1; */
+  /*   } */
+  /* } */
+  
   for (i4 = 0; i4 < nb_rows*size_CS; ++i4) {
     Z[i4] = CS[i4];
   }
 
+  /* free(Z); */
+
+  /* free(CS); */
+  
   Z = (double *) realloc(Z,nb_rows*size_CS);
 
-  printf("The size of the coarse space on the proc %i is %i\n",rank,size_CS);
+  /* Z = CS; */
+  
+  /* printf("The size of the coarse space on the proc %i is %i\n",rank,size_CS); */
 
   return size_CS;
   
