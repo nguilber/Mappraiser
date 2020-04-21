@@ -89,6 +89,8 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   double *Z;
   Z = (double *) malloc(sizeof(double)*n*nb_defl*nb_blocks_loc);
 
+  /* printf("r: %i, %i\n",rank,n/A->nnz); */
+
   /* if (Z != NULL) { */
   /*   printf("Fuck\n"); */
   /*   fflush(stdout); */
@@ -106,19 +108,90 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   // Orthogonalize the coarse space Z on a proc
   new_size = Orthogonalize_Space_loc(Z,n,nb_defl*nb_blocks_loc,tol_svd,rank);
 
-  printf("r: %i, %i\n",rank,new_size);
+  /* printf("r: %i, %i\n",rank,new_size); */
+
+  MPI_Comm comm = A->comm;
+
+
   
+  /* // ###### Not mandatory, just to have an idea of the size os the CS locally, what's needed is the total size, ie the sum */
   /* int *size_CS; */
   /* size_CS = (int *) calloc(nb_defl*nb_blocks_loc,sizeof(int)); */
 
   /* ++size_CS[new_size-1]; */
 
+  /* /\* printf("r: %i\n",rank); *\/ */
+  /* /\* for (i = 0; i < nb_defl*nb_blocks_loc; ++i) { *\/ */
+  /* /\*   printf("%i ", size_CS[i]); *\/ */
+  /* /\* } *\/ */
+  /* /\* printf("\n"); *\/ */
+
+  /* int *size_CS_reduce; */
+  /* size_CS_reduce = (int *) calloc(nb_defl*nb_blocks_loc,sizeof(int)); */
+
+  /* MPI_Allreduce(size_CS,size_CS_reduce,nb_defl*nb_blocks_loc,MPI_INT,MPI_SUM,comm); */
+
+  /* free(size_CS); */
+  
   /* printf("r: %i\n",rank); */
   /* for (i = 0; i < nb_defl*nb_blocks_loc; ++i) { */
-  /*   printf("%i ", size_CS[i]); */
+  /*   printf("%i ", size_CS_reduce[i]); */
   /* } */
   /* printf("\n"); */
 
+  // ######
+
+
+  /* int fake_n = 2; */
+  /* double *fake_CS; */
+  /* fake_CS = (double *) malloc((rank+1)*fake_n*sizeof(double)); */
+
+  /* /\* printf("r: %i, %i \n",rank,(rank+1)*fake_n); *\/ */
+
+  /* for (i = 0; i < rank+1; ++i) { */
+  /*   for (j = 0; j < fake_n; ++j) { */
+  /*     fake_CS[i*fake_n+j] = i+1; */
+  /*     // printf("%i ",i+1); */
+  /*   } */
+  /* } */
+
+  /* printf("\n"); */
+  
+  double *CS;
+
+  int tot_size_CS;
+
+  tot_size_CS = Communicate_sizes(new_size,comm);
+  
+  CS = (double *) malloc(sizeof(double)*n*tot_size_CS);
+  
+  Communicate_CS(Z,new_size,CS,comm,n);
+
+  /* tot_size_CS = Communicate_CS(fake_CS,rank+1,comm,fake_n); */
+
+  /* if (rank == 0) { */
+  /*   for (i = 0; i < tot_size_CS*fake_n; ++i) { */
+  /*     printf("%f ",fake_CS[i]); */
+  /*   } */
+  /*   printf("\n"); */
+  /* } */
+
+
+
+  /* // Orthogonalize the coarse space CS on a proc */
+  /* new_size = Orthogonalize_Space_loc(CS,n,tot_size_CS,tol_svd,rank); */
+  
+  /* double *E; */
+  /* E = (double *) malloc(new_size*new_size*sizeof(double)); */
+
+  /* Factorize_CS(A,Nm1,CS,E); */
+
+
+
+
+
+  
+  
   
   //map domain
   h = (double *) malloc(n * sizeof(double));      //descent direction
@@ -170,6 +243,14 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
    // for(i=0; i<50; i++){			//
    //     printf("At*_g: index = %d, g[%d] = %.18f\n", A->lindices[i], i, g[i]);
    // }
+
+
+
+
+
+
+
+   /* Apply_ADEF1(BJ,A,Nm1,CS,E,g,Cg); */
    
    MatVecProd(&BJ, g, Cg, 0);
    // for(j=0; j<n; j++)                    //

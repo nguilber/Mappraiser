@@ -51,6 +51,17 @@ int DiagAtA(Mat *A, double *diag, int pflag);
 
 
 
+
+
+
+
+
+
+
+
+
+
+
 // Build (A_i.T * A_i) bloc of size nnz*nnz operator
 int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, int np, int rank, int bloc);
 
@@ -67,7 +78,26 @@ int get_Fourier_mode(fftw_complex *in, fftw_complex *out, int size, int index_mo
 int Build_ALS(Mat *A, Tpltz Nm1, double *Z, int nb_defl, int np, int rank);
 
 // Build a orthonormal basis of a coarse space Z
-int Orthogonalize_Space_loc(double **Z, int nb_rows, int nb_cols, double tol_svd, int rank);
+int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd, int rank);
+
+// Get the total size of the coarse over all the processes
+int Communicate_sizes(int new_size, MPI_Comm comm);
+
+// Communicate the coarse space array between procs
+int Communicate_CS(double *Z, int new_size, double* CS, MPI_Comm comm, int nb_rows);
+
+/* // Compute the Cholesky factor of the Coarse matrix E (ref. Tang, Nabben, Vuik, Erlan notation) */
+/* int Factorize_CS(Mat *A, Tpltz Nm1, double *CS, double *E); */
+
+/* // Apply the ADEF1 2lvl preconditionner to a vector (ref. Tang, Nabben, Vuik, Erlan notation) */
+/* int Apply_ADEF1(Mat BJ, Mat *A, Tpltz Nm1, double *CS, double *E, double *in, double *out); */
+
+
+
+
+
+
+
 
 
 

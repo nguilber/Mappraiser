@@ -187,11 +187,11 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int pointing_com
     printf("[rank %d] nb_blocks_tot=%d, nb_blocks_loc=%d, lambda_block_avg=%d \n", rank, nb_blocks_tot, nb_blocks_loc, lambda_block_avg);
     // printf("[rank %d] nb_proc_shared_a_block=%d, nb_comm=%d \n", rank, nb_proc_shared_a_block, nb_comm);
   }
-
+  
   MPI_Barrier(comm);
    if(rank==0)
- printf("##### Start PCG ! ####################\n");
- fflush(stdout);
+ printf("##### Start PCG ####################\n");
+   fflush(stdout);
 
   //Hard coded parameters (To be removed)
   // int solver = 1;
@@ -199,7 +199,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int pointing_com
   // int enlFac = 16;
   // int ortho_alg = 1;
   // int bs_red = 0;
-
+  
   st=MPI_Wtime();
 // Conjugate Gradient
   if(solver==0)

@@ -781,10 +781,10 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
   }
 
   /* free(Z); */
-
-  /* free(CS); */
   
   Z = (double *) realloc(Z,nb_rows*size_CS);
+
+  free(CS);
 
   /* Z = CS; */
   
@@ -794,7 +794,151 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
   
 }
 
+// Get the total size of the coarse over all the processes
+int Communicate_sizes(int new_size, MPI_Comm comm){
 
+  int nb_proc;                         // Number of proc
+  int rank;                            // Id of the proc
+  int *size_on_proc;                   // Array of the size of a coarse space on a proc before reduce
+  int *size_on_proc_reduce;            // Array of the size of a coarse space on a proc after reduce
+  int tot_size_CS = 0;                 // Total size of the coarse space
+  int i0;                              // Some loop index_mode
+  
+  MPI_Comm_size(comm,&nb_proc);
+  MPI_Comm_rank(comm,&rank);
+
+  // Array of zeros containing the size of the CS of proc rank at position rank
+  size_on_proc = (int *) calloc(nb_proc,sizeof(int));
+  size_on_proc[rank] = new_size;
+
+  // size_on_proc_reduce is the sum of the size_on_proc array element wise
+  size_on_proc_reduce = (int *) calloc(nb_proc,sizeof(int));
+  MPI_Allreduce(size_on_proc,size_on_proc_reduce,nb_proc,MPI_INT,MPI_SUM,comm);
+
+  free(size_on_proc);
+  
+  // printf("r: %i\n",rank);
+
+  // Compute the total size of the CS
+  for (i0 = 0; i0 < nb_proc; ++i0) {
+    // printf("%i ", size_on_proc_reduce[i0]);
+    tot_size_CS += size_on_proc_reduce[i0];
+  }
+
+  return tot_size_CS;
+
+}
+
+
+// Communicate the coarse space array between the procs to build the full coarse space
+int Communicate_CS(double *Z, int new_size, double *CS, MPI_Comm comm, int nb_rows){
+  
+  int nb_proc;                         // Number of proc
+  int rank;                            // Id of the proc
+  int *size_on_proc;                   // Array of the size of a coarse space on a proc before reduce
+  int *size_on_proc_reduce;            // Array of the size of a coarse space on a proc after reduce
+  // int tot_size_CS = 0;                 // Total size of the coarse space
+  // double *CS;                          // Array of the total coarse space
+  int *location;                       // Array of where to write in CS for the procs
+  int *recvcount;                      // Integer array (of length nb_proc) containing the number of elements that are received from each process
+  int i0;                              // Some loop index
+
+  MPI_Comm_size(comm,&nb_proc);
+  MPI_Comm_rank(comm,&rank);
+
+  // Array of zeros containing the size of the CS of proc rank at position rank
+  size_on_proc = (int *) calloc(nb_proc,sizeof(int));
+  size_on_proc[rank] = new_size;
+
+  // size_on_proc_reduce is the sum of the size_on_proc array element wise
+  size_on_proc_reduce = (int *) calloc(nb_proc,sizeof(int));
+  MPI_Allreduce(size_on_proc,size_on_proc_reduce,nb_proc,MPI_INT,MPI_SUM,comm);
+
+  free(size_on_proc);
+    
+  printf("r: %i\n",rank);
+
+  // Compute the total size of the CS
+  for (i0 = 0; i0 < nb_proc; ++i0) {
+    printf("%i ", size_on_proc_reduce[i0]);
+    // tot_size_CS += size_on_proc_reduce[i0];
+  }
+  
+  printf("\n");
+
+  /* printf("r: %i, %i\n",rank,tot_size_CS); */
+
+  /* CS = (double *) malloc(sizeof(double)*nb_rows*tot_size_CS); */
+
+  location = (int *) calloc(nb_proc,sizeof(int));
+  recvcount = (int *) calloc(nb_proc,sizeof(int));
+
+  int tmp = 0;
+  for (i0 = 1; i0 < nb_proc; ++i0) {
+    location[i0] = size_on_proc_reduce[i0-1]*nb_rows + location[i0-1];
+    // tmp = location[i0];
+  }
+
+  printf("r: %i\n",rank);
+  
+  for (i0 = 0; i0 < nb_proc; ++i0) {
+    recvcount[i0] = size_on_proc_reduce[i0]*nb_rows;
+    printf("%i ",location[i0]/nb_rows);
+    // printf("%i ",recvcount[i0]/nb_rows);
+  }
+
+  printf("\n");
+
+  /* if (rank == 0) { */
+  /*   printf("-----> HERE : r: %i\n",rank); */
+  /* } */
+
+  MPI_Barrier(comm);
+
+  fflush(stdout);  
+  
+  MPI_Allgatherv(Z,new_size*nb_rows,MPI_DOUBLE,CS,recvcount,location,MPI_DOUBLE,comm);
+
+  /* int i; */
+  /* if (rank == 0) { */
+  /*   for (i = 0; i < tot_size_CS*nb_rows; ++i) { */
+  /*     printf("%f ",CS[i]); */
+  /*   } */
+  /*   printf("\n"); */
+  /* } */
+
+  free(size_on_proc_reduce);
+  free(recvcount);
+  free(location);
+
+  /* Z = CS; */
+  
+  return 0;
+}
+
+/* // Compute the Cholesky factor of the Coarse matrix E (ref. Tang, Nabben, Vuik, Erlan notation) */
+/* int Factorize_CS(Mat *A, Tpltz Nm1, double *Z, int nb_rows, int nb_cols, double *E){ */
+
+/*   double *z;                          // Array to store vector a column of Z */
+/*   double *Az;                         // Array to store vector the result of depointing A*z */
+/*   double *NAz;                        // Array to store vector N*A*z */
+/*   double *ANAz;                       // Array to store vector A.T*N*A*z */
+/*   double *AZ;                         // Array to store matrix A.T.N.A*Z */
+
+/*   for (i0 = 0; i0 < nb_cols; ++i0) { */
+    
+/*   } */
+
+
+/* } */
+
+/* // Apply the ADEF1 2lvl preconditionner to a vector (ref. Tang, Nabben, Vuik, Erlan notation) */
+/* int Apply_ADEF1(Mat BJ, Mat *A, Tpltz Nm1, double *CS, double *E, double *in, double *out){ */
+
+
+
+
+/* } */
 
 
 
