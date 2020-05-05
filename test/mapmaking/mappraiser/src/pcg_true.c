@@ -33,10 +33,12 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
   res_rel = (double *) malloc(1*sizeof(double));
 
+  MPI_Comm comm = A->comm;
+
   m=A->m;					//number of local time samples
   n=A->lcount;					//number of local pixels
-  MPI_Comm_rank(A->comm, &rank);		//
-  MPI_Comm_size(A->comm, &size);		//
+  MPI_Comm_rank(comm, &rank);		//
+  MPI_Comm_size(comm, &size);		//
 
 
   double *_g, *ACg, *Ah, *Nm1Ah ;		// time domain vectors
@@ -81,17 +83,38 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     x = tmp;
   }
 
-  int nb_defl;
-  nb_defl = 20; // To give as argument of PCG_GLS_true later on
+
+
+
+  
+  int i0,i1,i2,i3;
+  
+  if (rank == 0) {
+    printf("######## Start building ALS ##############\n");
+  }
+  fflush(stdout);
+  MPI_Barrier(comm);
+
+  
+  int nb_defl = 20; // To give as argument of PCG_GLS_true later on
   int nb_blocks_loc;
   nb_blocks_loc = Nm1.nb_blocks_loc;
-  
-  double *Z;
-  Z = (double *) malloc(sizeof(double)*n*nb_defl*nb_blocks_loc);
 
+  
+  double *Z1;
+  Z1 = (double *) malloc(sizeof(double)*n*nb_defl*nb_blocks_loc);
+
+  /* if (rank == 0) { */
+  /*   printf("Adress of Z :\n"); */
+  /* } */
+  
+  /* printf("r: %i, %p\n", rank,Z1); */
+  /* fflush(stdout); */
+  /* MPI_Barrier(comm); */
+  
   /* printf("r: %i, %i\n",rank,n/A->nnz); */
 
-  /* if (Z != NULL) { */
+  /* if (Z1 != NULL) { */
   /*   printf("Fuck\n"); */
   /*   fflush(stdout); */
   /* } */
@@ -99,20 +122,87 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   /* printf("Number of pixels : %i\n",n/A->nnz); */
   
   // Build the unorthogonalized coarse space of the blocks on a proc
-  Build_ALS(A,Nm1,Z,nb_defl,n,rank);
+  Build_ALS(A,Nm1,Z1,nb_defl,n,rank);
+  
+  if (rank == 0) {
+    printf("######## ALS builed ##############\n");
+  }
+  fflush(stdout);
   
   double tol_svd;
   int new_size;
   tol_svd = 1e-10; // To give as argument of PCG_GLS_true later on
 
+  if (rank == 0) {
+    printf("######## Start Ortho ##############\n");
+  }
+  MPI_Barrier(comm);
+  fflush(stdout);
+
+  /* if (rank == 0) { */
+  /*   printf("adress of Z1 : %p\n",&Z1); */
+  /*   printf("value of Z1 : %p\n", Z1); */
+  /* } */
+  /* MPI_Barrier(comm); */
+  /* fflush(stdout); */
+
+  double *Z2 = NULL;
+  
   // Orthogonalize the coarse space Z on a proc
-  new_size = Orthogonalize_Space_loc(Z,n,nb_defl*nb_blocks_loc,tol_svd,rank);
+  Z2 = Orthogonalize_Space_loc(Z1,n,nb_defl*nb_blocks_loc,&new_size,tol_svd,rank);
 
+  /* if (rank == 0) { */
+  /*   printf("Adress of Z :\n"); */
+  /* } */
+
+  /* printf("r: %i, %p\n", rank,Z2); */
+  /* fflush(stdout); */
+  /* MPI_Barrier(comm); */
+    
+  /* printf("r: %i, %i\n", rank, new_size); */
+  
+  /* MPI_Barrier(comm); */
+  /* fflush(stdout); */
+  /* MPI_Barrier(comm); */
+
+  if (Z1 != NULL) {
+    free(Z1);
+  }
+  else {
+    printf("r: %i, Z1 NULL\n", rank);
+  }
+
+  /* double * Z_tmp; */
+  /* Z_tmp = (double *) realloc(Z,n*new_size); */
+  /* if (Z_tmp == NULL) { */
+  /*   free(Z); */
+  /*   printf("r: %i, FUCK\n", rank); */
+  /* } */
+  /* else { */
+  /*   Z = Z_tmp; */
+  /* } */
+
+  
+  if (rank == 0) {
+    printf("######## End Ortho ##############\n");
+  }
+  MPI_Barrier(comm);
+  fflush(stdout);
+
+  /* printf("r: %i, CHECKING !\n", rank); */
+  /* for (i = 0; i < new_size*n; ++i) { */
+  /*   if (isnan(Z[i]) || (1-isfinite(Z[i])) ) { */
+  /*     printf("r: %i, FUCK !\n", rank); */
+  /*   } */
+  /* } */
+
+  /* printf("SOMETHING !\n"); */
+  /* fflush(stdout); */
+  /* MPI_Barrier(comm); */
+  
+
+  
   /* printf("r: %i, %i\n",rank,new_size); */
-
-  MPI_Comm comm = A->comm;
-
-
   
   /* // ###### Not mandatory, just to have an idea of the size os the CS locally, what's needed is the total size, ie the sum */
   /* int *size_CS; */
@@ -157,16 +247,194 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
   /* printf("\n"); */
   
-  double *CS;
+  if (rank == 0) {
+    printf("######## Start Communicate CS ##############\n");
+  }
+  MPI_Barrier(comm);
+  fflush(stdout);
+  
+  double *Z3 = NULL;
 
   int tot_size_CS;
 
-  tot_size_CS = Communicate_sizes(new_size,comm);
-  
-  CS = (double *) malloc(sizeof(double)*n*tot_size_CS);
-  
-  Communicate_CS(Z,new_size,CS,comm,n);
+  /* tot_size_CS = Communicate_sizes(new_size,comm); */
 
+  /* printf("r: %i, %i\n", rank,tot_size_CS); */
+  
+  /* Z3 = (double *) malloc(sizeof(double)*n*tot_size_CS); */
+
+  /* if(rank == 15) */
+  /*   printf("r: %i, %i\n",rank,n); */
+
+  int nb_proc = size;
+  
+  // Array of zeros containing the size of the CS of proc rank at position rank
+  int *size_on_proc;
+  size_on_proc = (int *) calloc(nb_proc,sizeof(int));
+  size_on_proc[rank] = new_size;
+
+  // size_on_proc_reduce is the sum of the size_on_proc array element wise
+  int * size_on_proc_reduce;
+  size_on_proc_reduce = (int *) calloc(nb_proc,sizeof(int));
+  MPI_Allreduce(size_on_proc,size_on_proc_reduce,nb_proc,MPI_INT,MPI_SUM,comm);
+
+  free(size_on_proc);
+
+  /* if(rank == 15) */
+  /* printf("r: %i\n",rank); */
+
+  tot_size_CS = 0;
+  
+  // Compute the total size of the CS
+  for (i0 = 0; i0 < nb_proc; ++i0) {
+    // if(rank == 15)
+    // printf("%i ", size_on_proc_reduce[i0]*n);
+    tot_size_CS += size_on_proc_reduce[i0];
+  }
+
+  /* if(rank == 15) */
+  /* printf("\n"); */
+
+  /* fflush(stdout); */
+  
+  /* MPI_Barrier(comm); */
+
+  /* printf("r: %i, %i\n",rank,tot_size_CS); */
+
+  Z3 = (double *) malloc(sizeof(double)*n*(tot_size_CS));
+  if (Z3 == NULL) {
+    printf("PROBLEM FOR r: %i\n",rank);
+  }
+  
+  int *location;
+  int *recvcount;
+  location = (int *) calloc(nb_proc,sizeof(int));
+  recvcount = (int *) calloc(nb_proc,sizeof(int));
+
+  /* int tmp = 0; */
+  for (i0 = 1; i0 < nb_proc; ++i0) {
+    location[i0] = size_on_proc_reduce[i0-1]*n + location[i0-1];
+    // tmp = location[i0];
+  }
+
+  // if(rank == 15)
+    // printf("r: %i\n",rank);
+  
+  for (i0 = 0; i0 < nb_proc; ++i0) {
+    recvcount[i0] = size_on_proc_reduce[i0]*n;
+    // if(rank == 15)
+      // printf("%i ",location[i0]);
+    // printf("%i ",recvcount[i0]/n);
+  }
+
+  /* if(rank == 15) */
+  /* printf("\n"); */
+
+  /* if (rank == 0) { */
+  /*   printf("-----> HERE : r: %i\n",rank); */
+  /* } */
+  
+  /* fflush(stdout); */
+
+  /* MPI_Barrier(comm); */
+  
+  MPI_Allgatherv(Z2,new_size*n,MPI_DOUBLE,Z3,recvcount,location,MPI_DOUBLE,comm);
+
+  /* printf("r: %i ------> HERE !!\n", rank); */
+  /* fflush(stdout); */
+  
+  /* int i; */
+  /* if (rank == 0) { */
+  /*   for (i = 0; i < (tot_size_CS)*n; ++i) { */
+  /*     printf("%f ",Z2[i]); */
+  /*   } */
+  /*   printf("\n"); */
+  /* } */
+
+
+
+  
+  /* Z3 = Communicate_CS(Z2,new_size,&tot_size_CS,comm,n); */
+
+  /* if (rank == 0) { */
+  /*   printf("Adress of Z :\n"); */
+  /* } */
+  
+  /* printf("r: %i, %p\n", rank,Z3); */
+  /* fflush(stdout); */
+  /* MPI_Barrier(comm); */
+  
+  /* printf("r: %i, %p\n",rank,Z3); */
+
+  /* printf("r: %i, %i\n",rank,tot_size_CS); */
+  
+  /* double norm = 0; */
+  /* int i0, i1; */
+  /* for (i0 = 0; i0 < tot_size_CS; ++i0) { */
+  /*   for (i1 = 0; i1 < n; ++i1) { */
+  /*     norm += Z3[i0*n+i1]*Z3[i0*n+i1]; */
+  /*   } */
+  /* } */
+  /* printf("r: %i, %f\n", rank,sqrt(norm)); */
+  /* fflush(stdout); */
+
+
+  if (Z2 != NULL) {
+    free(Z2);
+  }
+  else {
+    printf("r: %i, Z2 NULL\n", rank);
+  }
+  
+  MPI_Barrier(comm);
+  
+  if (rank == 0) {
+    printf("######## End Communicate CS ##############\n");
+  }
+  fflush(stdout);
+  MPI_Barrier(comm);
+  
+  /* printf("r: %i\n", rank); */
+  
+  /* for (i = 0; i < 5; ++i) { */
+  /*   printf("%f ", Z3[i]); */
+  /* } */
+  /* printf("\n"); */
+  
+  /* double *Z4 = NULL; */
+
+  if (rank == 3) {
+    printf("Adress of Z : %p\n", Z3);
+  }
+  fflush(stdout);
+  MPI_Barrier(comm);
+
+  /* new_size = Orthogonalize_Space_loc(Z3,n,tot_size_CS,Z4,tol_svd,rank); */
+  
+  /* if (Z3 != NULL) { */
+  /*   free(Z3); */
+  /* } */
+  /* else { */
+  /*   printf("r: %i, Z3 NULL\n", rank); */
+  /* } */
+
+  /* if (rank == 0) { */
+  /*   printf("Adress of Z :\n"); */
+  /* } */
+
+  /* printf("r: %i, %p\n", rank,Z3); */
+  /* fflush(stdout); */
+  /* MPI_Barrier(comm); */
+  
+
+  /* printf("r: %i, %i\n", rank,new_size); */
+
+  
+
+  /* printf("r: %i, %i\n", rank,new_size); */
+  /* fflush(stdout); */
+  /* MPI_Barrier(comm); */
+  
   /* tot_size_CS = Communicate_CS(fake_CS,rank+1,comm,fake_n); */
 
   /* if (rank == 0) { */
@@ -188,10 +456,11 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
 
 
-
-
   
-  
+
+  printf("Ok for me : %i\n", rank);
+  fflush(stdout);
+  MPI_Barrier(comm);
   
   //map domain
   h = (double *) malloc(n * sizeof(double));      //descent direction
@@ -200,11 +469,11 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
   //time domain
   Ah = (double *) malloc(m * sizeof(double));
-
+  
   _g = Ah;
   Cg = AtNm1Ah;
   Nm1Ah = Ah;
-
+  
   double *pixpond;
   pixpond = (double *) malloc(n * sizeof(double));
 
@@ -227,7 +496,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
    // for(i=0; i<50; i++){//
    //     printf("MatVecProd: _g[%d] = %f\n",i,_g[i]);
    // }
-   
+  
    for(i=0; i<m; i++)	//
      _g[i] = b[i] + noise[i] - _g[i];		// _g = b+n-A*x
    // for(i=0; i<50; i++){
@@ -238,12 +507,12 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
    // for(i=0; i<50; i++){//
    //     printf("Nm1*_g: _g[%d] = %f\n",i,_g[i]);
    // }
+
    
    TrMatVecProd(A, _g, g, 0);		//  g = P.T N (b+n)-(P.T N P)x
    // for(i=0; i<50; i++){			//
    //     printf("At*_g: index = %d, g[%d] = %.18f\n", A->lindices[i], i, g[i]);
    // }
-
 
 
 
@@ -418,6 +687,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
      for(j=0; j<n; j++)			// h = h * gamma - Cg
        h[j] = h[j] * gamma + Cg[j] ;
    }  //End loop
+
    
    
    if(k==K){				//check unconverged

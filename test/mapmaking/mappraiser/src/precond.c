@@ -578,28 +578,33 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
       for (i4 = 0; i4 < n; ++i4) {
     	CS[i0*nb_defl*n+i1*n+i4] = z[i4];
       }
+      
     }
+    
+    free(out);
+    free(in);
+    free(x);
   
     row_indice += nti;
   }
   
   free(z);
   free(y);
-  free(x);
-  free(out);
-  free(in);
+  // free(x);
+  // free(out);
+  // free(in);
   free(ATA);
 
   return 0;
 }
 
 // Build a orthonormal basis of a coarse space Z
-int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd, int rank)
+double * Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, int *size_CS, double tol_svd, int rank)
 {
   int i0,i1,i2,i3,i4;                              // Loop index
   double *tau;                                     // Coef. of the Householder reflection in the Q-factor
   int info;                                        // LAPACK return variable
-  int size_CS;
+  // int size_CS;
   
   /* double *M; */
   /* int line = 4; */
@@ -631,7 +636,7 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
   if (info < 0) {
     printf("r: %i - Compute non-pivoting QR factorization of coarse space Z : The parameter %i had an illegal value.\n",rank,-info);
   }
-
+  
   /* for (i0 = 0; i0 < 8; ++i0) { */
   /*   printf("%f \n", M[i0]); */
   /* } */
@@ -653,9 +658,11 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
   /* double *R; */
   /* R = (double *) calloc(col*col,sizeof(double)); */
 
-  /* double test = 0; */
+  double test = 0;
 
   /* printf("r: %i\n", rank); */
+
+  /* printf("r: %i ----> Here !!!\n",rank); */
   
   for (i0 = 0; i0 < nb_cols; ++i0) {
     // test += Z[i0+i0*nb_rows];
@@ -664,6 +671,10 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
       R[i1+i0*nb_cols] = Z[i1+i0*nb_rows];
     }
   }
+
+  /* printf("r: %i, %f\n", rank, test/nb_cols); */
+  /* fflush(stdout); */
+
 
   /* printf("\n"); */
   
@@ -708,6 +719,14 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
   
   info = LAPACKE_dgeqp3(LAPACK_COL_MAJOR,nb_cols,nb_cols,R,nb_cols,jpvt,tau_tmp);
 
+  /* printf("r: %i\n", rank); */
+  /* for (i2 = 0; i2 < nb_cols; ++i2) { */
+  /*   printf("%i ",jpvt[i2]); */
+  /* } */
+  /* printf("\n"); */
+  /* fflush(stdout); */
+
+
   /* test = 0; */
   
   /* for (i0 = 0; i0 < nb_cols; ++i0) { */
@@ -732,7 +751,7 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
   free(tau);
   
   // ###### Select the colums of the Q-factor related to high enough singular values
-  size_CS = 0;
+  *size_CS = 0;
 
   /* if (rank == 1) { */
   /*   printf("r: %i\n",rank); */
@@ -743,24 +762,27 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
   /*   printf("\n"); */
   /* } */
   
-  while ( (abs(R[size_CS*nb_cols+size_CS]) > tol_svd) * (size_CS<nb_cols) ) {
-    // printf("%i ", (R[size_CS*nb_cols+size_CS]>tol_svd)* (size_CS<nb_cols));
-    size_CS += 1;
+  while ( (abs(R[*size_CS*nb_cols+*size_CS]) > tol_svd) && (*size_CS<nb_cols) ) {
+    // printf("%i ", (R[*size_CS*nb_cols+*size_CS]>tol_svd)* (*size_CS<nb_cols));
+    *size_CS += 1;
   }
 
-  /* printf("r: %i, %i\n", rank, size_CS); */
+  /* printf("r: %i, %i\n", rank, *size_CS); */
   /* fflush(stdout); */
   
   // printf("\n");
-  // printf("%i ", (R[size_CS*nb_cols+size_CS]>tol_svd)* (size_CS<nb_cols));
+  // printf("%i ", (R[*size_CS*nb_cols+*size_CS]>tol_svd)* (*size_CS<nb_cols));
   
   free(R);
 
   double *CS;
   
-  CS = (double *) malloc(sizeof(double)*nb_rows*size_CS);
+  CS = (double *) malloc(sizeof(double)*nb_rows*(*size_CS));
   
-  for (i2 = 0; i2 < size_CS; ++i2) {
+  /* printf("r: %i, %p\n",rank,CS); */
+  /* fflush(stdout); */
+  
+  for (i2 = 0; i2 < *size_CS; ++i2) {
     // printf("r: %i, jpvt : %i\n", rank,jpvt[i2]);
     for (i3 = 0; i3 < nb_rows; ++i3) {
       CS[i2*nb_rows+i3] = Z[(jpvt[i2]-1)*nb_rows+i3];
@@ -768,29 +790,60 @@ int Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, double tol_svd,
   }
 
   free(jpvt);
+  /* free(Z); */
+
+  /* &Z = &CS; */
+
+  /* test = 0; */
+  /* for (i2 = 0; i2 < *size_CS; ++i2) { */
+  /*   for (i3 = 0; i3 < nb_rows; ++i3) { */
+  /*     test += CS[i2*nb_rows+i3]; */
+  /*   } */
+  /* } */
+
+  /* double mean = test/(*size_CS*nb_rows); */
+  /* double variance = 0; */
+  /* for (i2 = 0; i2 < *size_CS; ++i2) { */
+  /*   for (i3 = 0; i3 < nb_rows; ++i3) { */
+  /*     variance += (mean-CS[i2*nb_rows+i3])*(mean-CS[i2*nb_rows+i3]); */
+  /*   } */
+  /* } */
   
-  /* for (i2 = 0; i2 < size_CS; ++i2) { */
+  /* printf("r: %i, mean %f, var %f\n", rank,mean,sqrt(variance)); */
+
+
+  
+  /* for (i2 = 0; i2 < *size_CS; ++i2) { */
   /*   for (i3 = 0; i3 < nb_rows; ++i3) { */
   /*     Z[i2*nb_rows+i3] = 1; */
   /*     CS[i2*nb_rows+i3] = 1; */
   /*   } */
   /* } */
   
-  for (i4 = 0; i4 < nb_rows*size_CS; ++i4) {
-    Z[i4] = CS[i4];
-  }
+  /* for (i4 = 0; i4 < nb_rows*(*size_CS); ++i4) { */
+  /*   Z[i4] = CS[i4]; */
+  /* } */
 
+  /* printf("r: %i CHECKING\n",rank); */
+  /* int i; */
+  /* for (i = 0; i < *size_CS*nb_rows; ++i) { */
+  /*   if (isnan(Z[i]) || (1-isfinite(Z[i])) ) { */
+  /*     printf("FUCK !!?!?\n"); */
+  /*   } */
+  /* } */
+  /* printf("SOMETHING\n"); */
+  
   /* free(Z); */
   
-  Z = (double *) realloc(Z,nb_rows*size_CS);
+  /* Z = (double *) realloc(Z,nb_rows*(*size_CS)); */
 
-  free(CS);
+  /* free(CS); */
 
   /* Z = CS; */
   
-  /* printf("The size of the coarse space on the proc %i is %i\n",rank,size_CS); */
+  /* printf("The size of the coarse space on the proc %i is %i\n",rank,*size_CS); */
 
-  return size_CS;
+  return CS;
   
 }
 
@@ -831,14 +884,14 @@ int Communicate_sizes(int new_size, MPI_Comm comm){
 
 
 // Communicate the coarse space array between the procs to build the full coarse space
-int Communicate_CS(double *Z, int new_size, double *CS, MPI_Comm comm, int nb_rows){
+double * Communicate_CS(double *Z, int new_size, int *tot_size_CS, MPI_Comm comm, int nb_rows){
   
   int nb_proc;                         // Number of proc
   int rank;                            // Id of the proc
   int *size_on_proc;                   // Array of the size of a coarse space on a proc before reduce
   int *size_on_proc_reduce;            // Array of the size of a coarse space on a proc after reduce
   // int tot_size_CS = 0;                 // Total size of the coarse space
-  // double *CS;                          // Array of the total coarse space
+  double *CS;                          // Array of the total coarse space
   int *location;                       // Array of where to write in CS for the procs
   int *recvcount;                      // Integer array (of length nb_proc) containing the number of elements that are received from each process
   int i0;                              // Some loop index
@@ -855,20 +908,29 @@ int Communicate_CS(double *Z, int new_size, double *CS, MPI_Comm comm, int nb_ro
   MPI_Allreduce(size_on_proc,size_on_proc_reduce,nb_proc,MPI_INT,MPI_SUM,comm);
 
   free(size_on_proc);
-    
-  printf("r: %i\n",rank);
 
+  /* if(rank == 15) */
+  /* printf("r: %i\n",rank); */
+
+  *tot_size_CS = 0;
+  
   // Compute the total size of the CS
   for (i0 = 0; i0 < nb_proc; ++i0) {
-    printf("%i ", size_on_proc_reduce[i0]);
-    // tot_size_CS += size_on_proc_reduce[i0];
+    // if(rank == 15)
+    // printf("%i ", size_on_proc_reduce[i0]*nb_rows);
+    *tot_size_CS += size_on_proc_reduce[i0];
   }
+
+  /* if(rank == 15) */
+  /* printf("\n"); */
+
+  /* fflush(stdout); */
   
-  printf("\n");
+  /* MPI_Barrier(comm); */
 
-  /* printf("r: %i, %i\n",rank,tot_size_CS); */
+  /* printf("r: %i, %i\n",rank,*tot_size_CS); */
 
-  /* CS = (double *) malloc(sizeof(double)*nb_rows*tot_size_CS); */
+  CS = (double *) malloc(sizeof(double)*nb_rows*(*tot_size_CS));
 
   location = (int *) calloc(nb_proc,sizeof(int));
   recvcount = (int *) calloc(nb_proc,sizeof(int));
@@ -879,29 +941,35 @@ int Communicate_CS(double *Z, int new_size, double *CS, MPI_Comm comm, int nb_ro
     // tmp = location[i0];
   }
 
-  printf("r: %i\n",rank);
+  // if(rank == 15)
+    // printf("r: %i\n",rank);
   
   for (i0 = 0; i0 < nb_proc; ++i0) {
     recvcount[i0] = size_on_proc_reduce[i0]*nb_rows;
-    printf("%i ",location[i0]/nb_rows);
+    // if(rank == 15)
+      // printf("%i ",location[i0]);
     // printf("%i ",recvcount[i0]/nb_rows);
   }
 
-  printf("\n");
+  /* if(rank == 15) */
+  /* printf("\n"); */
 
   /* if (rank == 0) { */
   /*   printf("-----> HERE : r: %i\n",rank); */
   /* } */
+  
+  /* fflush(stdout); */
 
-  MPI_Barrier(comm);
-
-  fflush(stdout);  
+  /* MPI_Barrier(comm); */
   
   MPI_Allgatherv(Z,new_size*nb_rows,MPI_DOUBLE,CS,recvcount,location,MPI_DOUBLE,comm);
 
+  /* printf("r: %i ------> HERE !!\n", rank); */
+  /* fflush(stdout); */
+  
   /* int i; */
   /* if (rank == 0) { */
-  /*   for (i = 0; i < tot_size_CS*nb_rows; ++i) { */
+  /*   for (i = 0; i < (*tot_size_CS)*nb_rows; ++i) { */
   /*     printf("%f ",CS[i]); */
   /*   } */
   /*   printf("\n"); */
@@ -911,9 +979,11 @@ int Communicate_CS(double *Z, int new_size, double *CS, MPI_Comm comm, int nb_ro
   free(recvcount);
   free(location);
 
+  /* printf("r: %i, %p\n",rank,CS); */
+
   /* Z = CS; */
   
-  return 0;
+  return CS;
 }
 
 /* // Compute the Cholesky factor of the Coarse matrix E (ref. Tang, Nabben, Vuik, Erlan notation) */
