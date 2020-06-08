@@ -599,12 +599,12 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
 }
 
 // Build a orthonormal basis of a coarse space Z
-double * Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, int *size_CS, double tol_svd, int rank)
+int Orthogonalize_Space_loc(double **Z, int nb_rows, int nb_cols, double tol_svd, int rank)
 {
   int i0,i1,i2,i3,i4;                              // Loop index
   double *tau;                                     // Coef. of the Householder reflection in the Q-factor
   int info;                                        // LAPACK return variable
-  // int size_CS;
+  int size_CS;
   
   /* double *M; */
   /* int line = 4; */
@@ -622,6 +622,13 @@ double * Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, int *size_
   /* M[9] = 0; */
   /* M[10] = 2; */
   /* M[11] = 0; */
+
+  /* if (rank == 0) { */
+  /*   printf("Adress of Z :\n"); */
+  /* } */
+  
+  /* printf("r: %i, %p\n", rank,*Z); */
+  /* fflush(stdout); */
   
   tau = (double *) malloc(sizeof(double)*nb_cols);
 
@@ -631,7 +638,7 @@ double * Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, int *size_
   /* info = LAPACKE_dgeqrfp(LAPACK_COL_MAJOR,line,col,M,line,tau); */
 
   // Compute non-pivoting QR factorization of coarse space Z
-  info = LAPACKE_dgeqrf(LAPACK_COL_MAJOR,nb_rows,nb_cols,Z,nb_rows,tau);
+  info = LAPACKE_dgeqrf(LAPACK_COL_MAJOR,nb_rows,nb_cols,*Z,nb_rows,tau);
 
   if (info < 0) {
     printf("r: %i - Compute non-pivoting QR factorization of coarse space Z : The parameter %i had an illegal value.\n",rank,-info);
@@ -663,15 +670,25 @@ double * Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, int *size_
   /* printf("r: %i\n", rank); */
 
   /* printf("r: %i ----> Here !!!\n",rank); */
-  
+  /* fflush(stdout); */
+
+    
   for (i0 = 0; i0 < nb_cols; ++i0) {
-    // test += Z[i0+i0*nb_rows];
-    // printf("%f ", Z[i0+i0*nb_rows]);
+    // test += (*Z)[i0+i0*nb_rows];
+    // printf("%f ", (*Z)[i0+i0*nb_rows]);
     for (i1 = 0; i1 < i0+1; ++i1) {
-      R[i1+i0*nb_cols] = Z[i1+i0*nb_rows];
+      if ((i1+i0*nb_cols < nb_cols*nb_cols ) && (i1+i0*nb_rows < nb_rows*nb_cols)) {
+	// printf("r: %i, NO PROBLEM\n", rank);
+	// fflush(stdout);
+	R[i1+i0*nb_cols] = 1; // (*Z)[i1+i0*nb_rows];
+      }
+      else {
+	printf("r: %i, PROBLEM\n", rank);
+	fflush(stdout);
+      }
     }
   }
-
+  
   /* printf("r: %i, %f\n", rank, test/nb_cols); */
   /* fflush(stdout); */
 
@@ -679,7 +696,7 @@ double * Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, int *size_
   /* printf("\n"); */
   
   /* for (i0 = 0; i0 < col; ++i0) { */
-  /*   // test += Z[i0+i0*nb_cols]; */
+  /*   // test += (*Z)[i0+i0*nb_cols]; */
   /*   for (i1 = 0; i1 < i0+1; ++i1) { */
   /*     R[i1+i0*col] = M[i1+i0*line]; */
   /*   } */
@@ -742,16 +759,16 @@ double * Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, int *size_
   free(tau_tmp);
   
   // ###### Get the Q-factor from Z
-  info = LAPACKE_dorgqr(LAPACK_COL_MAJOR,nb_rows,nb_cols,nb_cols,Z,nb_rows,tau);
+  info = LAPACKE_dorgqr(LAPACK_COL_MAJOR,nb_rows,nb_cols,nb_cols,*Z,nb_rows,tau);
 
-  /* if (info < 0) { */
-  /*   printf("r: %i - Get the Q-factor from Z : The parameter %i had an illegal value.\n",rank,-info); */
-  /* } */
+  if (info < 0) {
+    printf("r: %i - Get the Q-factor from Z : The parameter %i had an illegal value.\n",rank,-info);
+  }
 
   free(tau);
   
   // ###### Select the colums of the Q-factor related to high enough singular values
-  *size_CS = 0;
+  size_CS = 0;
 
   /* if (rank == 1) { */
   /*   printf("r: %i\n",rank); */
@@ -762,48 +779,64 @@ double * Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, int *size_
   /*   printf("\n"); */
   /* } */
   
-  while ( (abs(R[*size_CS*nb_cols+*size_CS]) > tol_svd) && (*size_CS<nb_cols) ) {
-    // printf("%i ", (R[*size_CS*nb_cols+*size_CS]>tol_svd)* (*size_CS<nb_cols));
-    *size_CS += 1;
+  while ( (abs(R[size_CS*nb_cols+size_CS]) > tol_svd) && (size_CS<nb_cols) ) {
+    // printf("%i ", (R[size_CS*nb_cols+size_CS]>tol_svd)* (size_CS<nb_cols));
+    size_CS += 1;
   }
 
-  /* printf("r: %i, %i\n", rank, *size_CS); */
+  /* printf("r: %i, %i\n", rank, size_CS); */
   /* fflush(stdout); */
   
   // printf("\n");
-  // printf("%i ", (R[*size_CS*nb_cols+*size_CS]>tol_svd)* (*size_CS<nb_cols));
+  // printf("%i ", (R[size_CS*nb_cols+size_CS]>tol_svd)* (size_CS<nb_cols));
   
   free(R);
 
   double *CS;
   
-  CS = (double *) malloc(sizeof(double)*nb_rows*(*size_CS));
-  
-  /* printf("r: %i, %p\n",rank,CS); */
+  CS = (double *) malloc(sizeof(double)*nb_rows*(size_CS));
+
+  /* if (rank == 0) { */
+  /*   printf("Adress of Z :\n"); */
+  /* } */
+
+  /* printf("r: %i, %p\n", rank,CS); */
   /* fflush(stdout); */
   
-  for (i2 = 0; i2 < *size_CS; ++i2) {
-    // printf("r: %i, jpvt : %i\n", rank,jpvt[i2]);
+  /* printf("r: %i, nb_cols: %i\n",rank,nb_cols); */
+  /* fflush(stdout); */
+  
+  for (i2 = 0; i2 < size_CS; ++i2) {
+    // printf("r: %i, jpvt : %i\n", rank,jpvt[i2]-1);
+    // fflush(stdout);
     for (i3 = 0; i3 < nb_rows; ++i3) {
-      CS[i2*nb_rows+i3] = Z[(jpvt[i2]-1)*nb_rows+i3];
+      if ((i2*nb_rows+i3 < nb_rows*size_CS) && ((jpvt[i2]-1)*nb_rows+i3 < nb_rows*nb_cols) && (i2 < nb_cols)) {
+	// printf("r: %i, NO PROBLEM\n", rank);
+	// fflush(stdout);
+	CS[i2*nb_rows+i3] = (*Z)[(jpvt[i2]-1)*nb_rows+i3];
+      }
+      else {
+	printf("r: %i, PROBLEM\n", rank);
+	fflush(stdout);
+      }
     }
   }
 
   free(jpvt);
-  /* free(Z); */
+  /* free(*Z); */
 
-  /* &Z = &CS; */
+  /* &*Z = &CS; */
 
   /* test = 0; */
-  /* for (i2 = 0; i2 < *size_CS; ++i2) { */
+  /* for (i2 = 0; i2 < size_CS; ++i2) { */
   /*   for (i3 = 0; i3 < nb_rows; ++i3) { */
   /*     test += CS[i2*nb_rows+i3]; */
   /*   } */
   /* } */
 
-  /* double mean = test/(*size_CS*nb_rows); */
+  /* double mean = test/(size_CS*nb_rows); */
   /* double variance = 0; */
-  /* for (i2 = 0; i2 < *size_CS; ++i2) { */
+  /* for (i2 = 0; i2 < size_CS; ++i2) { */
   /*   for (i3 = 0; i3 < nb_rows; ++i3) { */
   /*     variance += (mean-CS[i2*nb_rows+i3])*(mean-CS[i2*nb_rows+i3]); */
   /*   } */
@@ -813,37 +846,37 @@ double * Orthogonalize_Space_loc(double *Z, int nb_rows, int nb_cols, int *size_
 
 
   
-  /* for (i2 = 0; i2 < *size_CS; ++i2) { */
+  /* for (i2 = 0; i2 < size_CS; ++i2) { */
   /*   for (i3 = 0; i3 < nb_rows; ++i3) { */
-  /*     Z[i2*nb_rows+i3] = 1; */
+  /*     (*Z)[i2*nb_rows+i3] = 1; */
   /*     CS[i2*nb_rows+i3] = 1; */
   /*   } */
   /* } */
   
-  /* for (i4 = 0; i4 < nb_rows*(*size_CS); ++i4) { */
-  /*   Z[i4] = CS[i4]; */
+  /* for (i4 = 0; i4 < nb_rows*(size_CS); ++i4) { */
+  /*   (*Z)[i4] = CS[i4]; */
   /* } */
 
   /* printf("r: %i CHECKING\n",rank); */
   /* int i; */
-  /* for (i = 0; i < *size_CS*nb_rows; ++i) { */
-  /*   if (isnan(Z[i]) || (1-isfinite(Z[i])) ) { */
+  /* for (i = 0; i < size_CS*nb_rows; ++i) { */
+  /*   if (isnan((*Z)[i]) || (1-isfinite((*Z)[i])) ) { */
   /*     printf("FUCK !!?!?\n"); */
   /*   } */
   /* } */
   /* printf("SOMETHING\n"); */
   
-  /* free(Z); */
+  /* free(*Z); */
   
-  /* Z = (double *) realloc(Z,nb_rows*(*size_CS)); */
+  /* *Z = (double *) realloc(*Z,nb_rows*(size_CS)); */
 
   /* free(CS); */
 
-  /* Z = CS; */
+  *Z = CS; // *arg1 = CS;
   
-  /* printf("The size of the coarse space on the proc %i is %i\n",rank,*size_CS); */
+  /* printf("The size of the coarse space on the proc %i is %i\n",rank,size_CS); */
 
-  return CS;
+  return size_CS;
   
 }
 
