@@ -8,8 +8,6 @@ MIDAPACK_OBJ=$(MIDAPACK_ROOT)/obj
 MAPMAT_OBJ=$(MIDAPACK_OBJ)/mapmat
 TOEPLITZ_OBJ=$(MIDAPACK_OBJ)/toeplitz
 MIDAPACK_LIB=$(MIDAPACK_ROOT)/lib
-FFTW_INC = -I/usr/include
-FFTW_LIB = -L/usr/lib/x86_64-linux-gnu -lfftw3 -lfftw3_threads
 
 .PHONY: lib
 all :
