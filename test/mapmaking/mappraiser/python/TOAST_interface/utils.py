@@ -26,6 +26,13 @@ def add_mappraiser_args(parser):
     )
     parser.add_argument("--Lambda", required=False, default=16384, type=np.int, help="Half bandwidth (lambda) of noise covariance"
     )
+    parser.add_argument(
+        "--pair-diff",
+        dest="pair_diff",
+        required=False,
+        action="store_true",
+        help="Process differenced TOD [default]",
+    )
     parser.add_argument("--solver", required=False, default=0, type=np.int, help="Choose map-making solver: 0->PCG, 1->ECG"
     )
     parser.add_argument("--ptcomm_flag", required=False, default=6, type=np.int, help="Choose collective communication scheme"
@@ -147,6 +154,7 @@ def apply_mappraiser(
         name=signalname,
         noise_name = noisename,
         conserve_memory=args.conserve_memory,
+        pair_diff=args.pair_diff,
     )
 
     if time_comms is None:
