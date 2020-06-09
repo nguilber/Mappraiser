@@ -20,8 +20,7 @@
 #include "midapack.h"
 #include "mappraiser.h"
 
-
-int x2map_pol( double *mapI, double *mapQ, double *mapU, double *Cond, int * hits, int npix, double *x, int *lstid, double *cond, int *lhits, int xsize);
+int x2map_pol( double *mapI, double *mapQ, double *mapU, double *Cond, int * hits, int npix, double *x, int *lstid, double *cond, int *lhits, int xsize, int Nnz);
 
 void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int Z_2lvl, int pointing_commflag, double tol, int maxiter, int enlFac, int ortho_alg, int bs_red, int nside, void *data_size_proc, int nb_blocks_loc, void *local_blocks_sizes, int Nnz, void *pix, void *pixweights, void *signal, double *noise, int lambda, double *invtt)
 {
@@ -57,6 +56,8 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
     printf("[rank %d] M=%ld\n", rank, M);
     fflush(stdout);
   }
+  printf("Nnz = %d\n",Nnz);
+  fflush(stdout);
 
   //compute distribution indexes over the processes
   m = ((int *)data_size_proc)[rank];
@@ -117,14 +118,13 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   int *lhits;
   double *cond;
   x   = (double *) malloc(A.lcount*sizeof(double));
-  cond = (double *) malloc((int)(A.lcount/3)*sizeof(double));
-  lhits = (int *) malloc((int)(A.lcount/3) * sizeof(int));
-
+  cond = (double *) malloc((int)(A.lcount/A.nnz)*sizeof(double));
+  lhits = (int *) malloc((int)(A.lcount/A.nnz) * sizeof(int));
   for(j=0; j<A.lcount; j++){
     x[j] = 0.;
-    if(j%3 == 0){
-      lhits[(int)(j/3)] = 0;
-      cond[(int)(j/3)] = 0.;
+    if(j%A.nnz == 0){
+      lhits[(int)(j/A.nnz)] = 0;
+      cond[(int)(j/A.nnz)] = 0.;
     }
   }
 
@@ -211,7 +211,9 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
     int oldsize;
 
     double *mapI;
-    mapI    = (double *) calloc(npix, sizeof(double));
+    if(A.nnz == 3){
+      mapI    = (double *) calloc(npix, sizeof(double));
+    }
     double *mapQ;
     mapQ    = (double *) calloc(npix, sizeof(double));
     double *mapU;
@@ -236,7 +238,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
         MPI_Recv(cond, mapsize/Nnz, MPI_DOUBLE, i, 3, comm, &status);
         MPI_Recv(lhits, mapsize/Nnz, MPI_INT, i, 4, comm, &status);
       }
-      x2map_pol(mapI, mapQ, mapU, Cond, hits, npix, x, lstid, cond, lhits, mapsize);
+      x2map_pol(mapI, mapQ, mapU, Cond, hits, npix, x, lstid, cond, lhits, mapsize, Nnz);
     }
     printf("Checking output directory ... old files will be overwritten\n");
     char Imap_name[256];
@@ -248,19 +250,23 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
     char *cordsys = "C";
     int ret,w=1;
 
-    sprintf(Imap_name,"%s/mapI_%s.fits", outpath, ref);
+    if(Nnz == 3)
+      sprintf(Imap_name,"%s/mapI_%s.fits", outpath, ref);
     sprintf(Qmap_name,"%s/mapQ_%s.fits", outpath, ref);
     sprintf(Umap_name,"%s/mapU_%s.fits", outpath, ref);
     sprintf(Condmap_name,"%s/Cond_%s.fits", outpath, ref);
     sprintf(Hitsmap_name,"%s/Hits_%s.fits", outpath, ref);
 
-    if( access( Imap_name, F_OK ) != -1 ) {
-      ret = remove(Imap_name);
-      if(ret != 0){
-        printf("Error: unable to delete the file %s\n",Imap_name);
-        w = 0;
+    if(Nnz == 3){
+      if( access( Imap_name, F_OK ) != -1 ) {
+        ret = remove(Imap_name);
+        if(ret != 0){
+          printf("Error: unable to delete the file %s\n",Imap_name);
+          w = 0;
+        }
       }
     }
+
 
     if( access( Qmap_name, F_OK ) != -1 ) {
       ret = remove(Qmap_name);
@@ -296,7 +302,8 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
 
     if(w==1){
       printf("Writing HEALPix maps FITS files ...\n");
-      write_map(mapI, TDOUBLE, nside, Imap_name, nest, cordsys);
+      if(Nnz == 3)
+        write_map(mapI, TDOUBLE, nside, Imap_name, nest, cordsys);
       write_map(mapQ, TDOUBLE, nside, Qmap_name, nest, cordsys);
       write_map(mapU, TDOUBLE, nside, Umap_name, nest, cordsys);
       write_map(Cond, TDOUBLE, nside, Condmap_name, nest, cordsys);
@@ -331,21 +338,33 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   // MPI_Finalize();
 }
 
-int x2map_pol( double *mapI, double *mapQ, double *mapU, double *Cond, int * hits, int npix, double *x, int *lstid, double *cond, int *lhits, int xsize)
+int x2map_pol( double *mapI, double *mapQ, double *mapU, double *Cond, int * hits, int npix, double *x, int *lstid, double *cond, int *lhits, int xsize, int Nnz)
 {
 
   int i;
 
   for(i=0; i<xsize; i++){
-    if(i%3 == 0){
-      mapI[(int)(lstid[i]/3)]= x[i];
-      hits[(int)(lstid[i]/3)]= lhits[(int)(i/3)];
-      Cond[(int)(lstid[i]/3)]= cond[(int)(i/3)];
+    if(Nnz == 3){
+      if(i%Nnz == 0){
+        mapI[(int)(lstid[i]/Nnz)]= x[i];
+        hits[(int)(lstid[i]/Nnz)]= lhits[(int)(i/Nnz)];
+        Cond[(int)(lstid[i]/Nnz)]= cond[(int)(i/Nnz)];
+      }
+      else if (i%Nnz == 1)
+        mapQ[(int)(lstid[i]/Nnz)]= x[i];
+      else
+        mapU[(int)(lstid[i]/Nnz)]= x[i];
     }
-    else if (i%3 == 1)
-      mapQ[(int)(lstid[i]/3)]= x[i];
-    else
-      mapU[(int)(lstid[i]/3)]= x[i];
+    else if(Nnz == 2){// pair difference model
+      if(i%Nnz == 0){
+        mapQ[(int)(lstid[i]/Nnz)]= x[i];
+        hits[(int)(lstid[i]/Nnz)]= lhits[(int)(i/Nnz)];
+        Cond[(int)(lstid[i]/Nnz)]= cond[(int)(i/Nnz)];
+      }
+      else if (i%Nnz == 1)
+        mapU[(int)(lstid[i]/Nnz)]= x[i];
+    }
+
   }
 
   return 0;

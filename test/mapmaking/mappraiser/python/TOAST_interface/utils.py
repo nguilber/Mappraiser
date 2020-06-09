@@ -28,6 +28,13 @@ def add_mappraiser_args(parser):
     )
     parser.add_argument("--uniform_w", required=False, default=0, type=np.int, help="Activate for uniform white noise model: 0->off, 1->on"
     )
+    parser.add_argument(
+        "--pair-diff",
+        dest="pair_diff",
+        required=False,
+        action="store_true",
+        help="Process differenced TOD [default]",
+    )
     parser.add_argument("--solver", required=False, default=0, type=np.int, help="Choose map-making solver: 0->PCG, 1->ECG"
     )
     parser.add_argument("--precond", required=False, default=0, type=np.int, help="Choose map-making preconditioner: 0->BD, 1->2lvl a priori, 2->2lvl a posteriori"
@@ -156,6 +163,7 @@ def apply_mappraiser(
         name=signalname,
         noise_name = noisename,
         conserve_memory=args.conserve_memory,
+        pair_diff=args.pair_diff,
     )
 
     if time_comms is None:

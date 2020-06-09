@@ -108,6 +108,7 @@ class OpMappraiser(Operator):
         noise (str): Keyword to use when retrieving the noise object
             from the observation.
         conserve_memory(bool/int): Stagger the Mappraiser buffer staging on node.
+        pair_diff(bool/int): Process differenced TOD between orthogonal pairs.
         translate_timestamps(bool): Translate timestamps to enforce
             monotonity.
     """
@@ -135,6 +136,7 @@ class OpMappraiser(Operator):
         noise="noise",
         intervals="intervals",
         conserve_memory=False,
+        pair_diff=False,
         translate_timestamps=True,
     ):
         # Call the parent class constructor
@@ -178,6 +180,7 @@ class OpMappraiser(Operator):
         self._mappraiser_signal = None
         self._mappraiser_invtt = None
         self._conserve_memory = int(conserve_memory)
+        self._pair_diff = pair_diff
         self._translate_timestamps = translate_timestamps
         self._verbose = True
 
@@ -263,7 +266,11 @@ class OpMappraiser(Operator):
         """
         if self._verbose:
             memreport("just before calling libmappraiser.MLmap", self._comm)
-
+        if self._pair_diff:
+            nnz_bis = nnz -1
+            nb_blocks_loc = int(nb_blocks_loc/2)
+        else:
+            nnz_bis = nnz
         # Compute the Maximum Likelihood map
         # os.environ["OMP_NUM_THREADS"] = "1"
         mappraiser.MLmap(
@@ -272,7 +279,7 @@ class OpMappraiser(Operator):
             data_size_proc,
             nb_blocks_loc,
             local_blocks_sizes,
-            nnz,
+            nnz_bis,
             self._mappraiser_pixels,
             self._mappraiser_pixweights,
             self._mappraiser_signal,
@@ -586,37 +593,67 @@ class OpMappraiser(Operator):
             nodecomm.Barrier()
             timer.start()
             if nodecomm.rank % nread == iread:
-                self._mappraiser_signal = self._cache.create(
-                "signal", mappraiser.SIGNAL_TYPE, (nsamp * ndet,)
-                )
+                if not self._pair_diff:
+                    self._mappraiser_signal = self._cache.create(
+                    "signal", mappraiser.SIGNAL_TYPE, (nsamp * ndet,)
+                    )
+                else:
+                    self._mappraiser_signal = self._cache.create(
+                    "signal", mappraiser.SIGNAL_TYPE, (nsamp * int(ndet/2),)
+                    )
                 self._mappraiser_signal[:] = np.nan
 
                 global_offset = 0
                 local_blocks_sizes = []
                 for iobs, obs in enumerate(self._data.obs):
                     tod = obs["tod"]
+                    if not self._pair_diff:
+                        for idet, det in enumerate(detectors):
+                            # Get the signal.
+                            signal = tod.local_signal(det, self._name)
+                            signal_dtype = signal.dtype
+                            offset = global_offset
+                            local_V_size = len(signal)
+                            dslice = slice(idet * nsamp + offset, idet * nsamp + offset + local_V_size)
+                            self._mappraiser_signal[dslice] = signal
+                            offset += local_V_size
+                            local_blocks_sizes.append(local_V_size)
 
-                    for idet, det in enumerate(detectors):
-                        # Get the signal.
-                        signal = tod.local_signal(det, self._name)
-                        signal_dtype = signal.dtype
-                        offset = global_offset
-                        local_V_size = len(signal)
-                        dslice = slice(idet * nsamp + offset, idet * nsamp + offset + local_V_size)
-                        self._mappraiser_signal[dslice] = signal
-                        offset += local_V_size
-                        local_blocks_sizes.append(local_V_size)
 
-
-                        del signal
-                    # Purge only after all detectors are staged in case some are aliased
-                    # cache.clear() will not fail if the object was already
-                    # deleted as an alias
-                    if purge:
-                        for det in detectors:
-                            cachename = "{}_{}".format(self._name, det)
-                            tod.cache.clear(cachename)
-                    global_offset = offset
+                            del signal
+                        # Purge only after all detectors are staged in case some are aliased
+                        # cache.clear() will not fail if the object was already
+                        # deleted as an alias
+                        if purge:
+                            for det in detectors:
+                                cachename = "{}_{}".format(self._name, det)
+                                tod.cache.clear(cachename)
+                        global_offset = offset
+                    else: # pair-differencing case, assuming local dets come in pairs
+                        for idet, det in enumerate(detectors):
+                            # Get the signal.
+                            if (idet % 2) == 0:
+                                signal_0 = tod.local_signal(det, self._name)
+                                signal_dtype = signal_0.dtype
+                            if (idet % 2) == 1:
+                                signal_1 = tod.local_signal(det, self._name)
+                                signal_dtype = signal_1.dtype
+                                offset = global_offset
+                                local_V_size = len(signal_0)
+                                dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + local_V_size)
+                                self._mappraiser_signal[dslice] = 0.5*(signal_0 - signal_1)
+                                offset += local_V_size
+                                local_blocks_sizes.append(local_V_size)
+                                del signal_0
+                                del signal_1
+                        # Purge only after all detectors are staged in case some are aliased
+                        # cache.clear() will not fail if the object was already
+                        # deleted as an alias
+                        if purge:
+                            for det in detectors:
+                                cachename = "{}_{}".format(self._name, det)
+                                tod.cache.clear(cachename)
+                        global_offset = offset
 
                 local_blocks_sizes = np.array(local_blocks_sizes, dtype=np.int32)
             if self._verbose and nread > 1:
@@ -643,16 +680,20 @@ class OpMappraiser(Operator):
             nodecomm.Barrier()
             timer.start()
             if nodecomm.rank % nread == iread:
-                self._mappraiser_noise = self._cache.create(
-                "noise", mappraiser.SIGNAL_TYPE, (nsamp * ndet,)
-                )
+                if not self._pair_diff:
+                    self._mappraiser_noise = self._cache.create(
+                    "noise", mappraiser.SIGNAL_TYPE, (nsamp * ndet,)
+                    )
+                else:
+                    self._mappraiser_noise = self._cache.create(
+                    "noise", mappraiser.SIGNAL_TYPE, (nsamp * int(ndet/2),)
+                    )
                 if self._noise_name == None:
                     self._mappraiser_noise = np.zeros_like(self._mappraiser_noise)
                     invtt_list = []
                     for i in range(len(self._data.obs)*len(detectors)):
                         invtt_list.append(np.ones(1)) #Must be used with lambda = 1
                     return invtt_list, self._mappraiser_noise.dtype
-
 
                 self._mappraiser_noise[:] = np.nan
 
@@ -665,34 +706,55 @@ class OpMappraiser(Operator):
                 for iobs, obs in enumerate(self._data.obs):
                     tod = obs["tod"]
 
-                    for idet, det in enumerate(detectors):
-                        # Get the signal.
-                        noise = tod.local_signal(det, self._noise_name)
-                        # if self._rank ==0 and idet == 0:
-                        #     print("|noise| = {}".format(np.sum(noise**2)))
-                        noise_dtype = noise.dtype
-                        offset = global_offset
-                        nn = len(noise)
-                        invtt = self._noise2invtt(noise, nn, idet) #, logsigma2, alpha, fknee, fmin = self._noise2invtt(noise, nn, idet)
-                        invtt_list.append(invtt)
-                        # logsigma2_list.append(logsigma2)
-                        # alpha_list.append(alpha)
-                        # fknee_list.append(fknee)
-                        # fmin_list.append(fmin)
-                        dslice = slice(idet * nsamp + offset, idet * nsamp + offset + nn)
-                        self._mappraiser_noise[dslice] = noise
-                        offset += nn
+                    if not self._pair_diff:
+                        for idet, det in enumerate(detectors):
+                            # Get the signal.
+                            noise = tod.local_signal(det, self._noise_name)
+                            noise_dtype = noise.dtype
+                            offset = global_offset
+                            nn = len(noise)
+                            invtt = self._noise2invtt(noise, nn, idet)
+                            invtt_list.append(invtt)
+                            dslice = slice(idet * nsamp + offset, idet * nsamp + offset + nn)
+                            self._mappraiser_noise[dslice] = noise
+                            offset += nn
 
 
-                        del noise
-                    # Purge only after all detectors are staged in case some are aliased
-                    # cache.clear() will not fail if the object was already
-                    # deleted as an alias
-                    if purge:
-                        for det in detectors:
-                            cachename = "{}_{}".format(self._noise_name, det)
-                            tod.cache.clear(cachename)
-                    global_offset = offset
+                            del noise
+                        # Purge only after all detectors are staged in case some are aliased
+                        # cache.clear() will not fail if the object was already
+                        # deleted as an alias
+                        if purge:
+                            for det in detectors:
+                                cachename = "{}_{}".format(self._noise_name, det)
+                                tod.cache.clear(cachename)
+                        global_offset = offset
+                    else: # pair-differencing case, assuming local dets come in pairs
+                        for idet, det in enumerate(detectors):
+                            # Get the signal.
+                            if (idet % 2) == 0:
+                                noise_0 = tod.local_signal(det, self._noise_name)
+                                noise_dtype = noise_0.dtype
+                            if (idet % 2) == 1:
+                                noise_1 = tod.local_signal(det, self._noise_name)
+                                noise_dtype = noise_1.dtype
+                                offset = global_offset
+                                nn = len(noise_0)
+                                invtt = self._noise2invtt(0.5*(noise_0-noise_1), nn, int(idet/2))
+                                invtt_list.append(invtt)
+                                dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + nn)
+                                self._mappraiser_noise[dslice] = 0.5*(noise_0-noise_1)
+                                offset += nn
+                                del noise_0
+                                del noise_1
+                        # Purge only after all detectors are staged in case some are aliased
+                        # cache.clear() will not fail if the object was already
+                        # deleted as an alias
+                        if purge:
+                            for det in detectors:
+                                cachename = "{}_{}".format(self._noise_name, det)
+                                tod.cache.clear(cachename)
+                        global_offset = offset
             if self._verbose and nread > 1:
                 nodecomm.Barrier()
                 if self._rank == 0:
@@ -730,9 +792,14 @@ class OpMappraiser(Operator):
     def _stage_pixels(self, detectors, nsamp, ndet, nnz, nside):
         """ Stage pixels
         """
-        self._mappraiser_pixels = self._cache.create(
-            "pixels", mappraiser.PIXEL_TYPE, (nsamp * ndet * nnz,)
-        )
+        if not self._pair_diff:
+            self._mappraiser_pixels = self._cache.create(
+                "pixels", mappraiser.PIXEL_TYPE, (nsamp * ndet * nnz,)
+            )
+        else:
+            self._mappraiser_pixels = self._cache.create(
+                "pixels", mappraiser.PIXEL_TYPE, (nsamp * int(ndet/2) * (nnz-1),)
+            )
         self._mappraiser_pixels[:] = -1
 
         global_offset = 0
@@ -740,71 +807,139 @@ class OpMappraiser(Operator):
             tod = obs["tod"]
 
             commonflags = None
-            for idet, det in enumerate(detectors):
-                # Optionally get the flags, otherwise they are
-                # assumed to have been applied to the pixel numbers.
-                # N.B: MAPPRAISER doesn't use flags for now but might be useful for
-                # future updates.
+            if not self._pair_diff:
+                for idet, det in enumerate(detectors):
+                    # Optionally get the flags, otherwise they are
+                    # assumed to have been applied to the pixel numbers.
+                    # N.B: MAPPRAISER doesn't use flags for now but might be useful for
+                    # future updates.
 
-                if self._apply_flags:
-                    detflags = tod.local_flags(det, self._flag_name)
-                    commonflags = tod.local_common_flags(self._common_flag_name)
-                    flags = np.logical_or(
-                        (detflags & self._flag_mask) != 0,
-                        (commonflags & self._common_flag_mask) != 0,
+                    if self._apply_flags:
+                        detflags = tod.local_flags(det, self._flag_name)
+                        commonflags = tod.local_common_flags(self._common_flag_name)
+                        flags = np.logical_or(
+                            (detflags & self._flag_mask) != 0,
+                            (commonflags & self._common_flag_mask) != 0,
+                        )
+                        del detflags
+
+                    # get the pixels for the valid intervals from the cache
+
+                    pixelsname = "{}_{}".format(self._pixels, det)
+                    pixels = tod.cache.reference(pixelsname)
+                    pixels_dtype = pixels.dtype
+
+                    if not self._pixels_nested:
+                        # Madam expects the pixels to be in nested ordering.
+                        # This is not the case for Mappraiser but keeping it for now
+                        pixels = pixels.copy()
+                        good = pixels >= 0
+                        pixels[good] = hp.ring2nest(nside, pixels[good])
+
+                    if self._apply_flags:
+                        pixels = pixels.copy()
+                        pixels[flags] = -1
+
+                    offset = global_offset
+                    nn = len(pixels)
+                    dslice = slice(
+                        (idet * nsamp + offset) * nnz,
+                        (idet * nsamp + offset + nn) * nnz,
                     )
-                    del detflags
+                    # nnz = 3 is a mandatory assumption here (could easily be generalized ...)
+                    self._mappraiser_pixels[dslice] = nnz * np.repeat(pixels,nnz)
+                    self._mappraiser_pixels[dslice][1::nnz] += 1
+                    self._mappraiser_pixels[dslice][2::nnz] += 2
+                    offset += nn
 
-                # get the pixels for the valid intervals from the cache
+                    del pixels
+                    if self._apply_flags:
+                        del flags
 
-                pixelsname = "{}_{}".format(self._pixels, det)
-                pixels = tod.cache.reference(pixelsname)
-                pixels_dtype = pixels.dtype
+                # Always purge the pixels but restore them from the Mappraiser
+                # buffers when purge_pixels = False
+                # Purging MUST happen after all detectors are staged because
+                # some the pixel numbers may be aliased between detectors
+                for det in detectors:
+                    pixelsname = "{}_{}".format(self._pixels, det)
+                    # cache.clear() will not fail if the object was already
+                    # deleted as an alias
+                    tod.cache.clear(pixelsname)
+                    if self._purge_flags and self._flag_name is not None:
+                        cacheflagname = "{}_{}".format(self._flag_name, det)
+                        tod.cache.clear(cacheflagname)
 
-                if not self._pixels_nested:
-                    # Madam expects the pixels to be in nested ordering.
-                    # This is not the case for Mappraiser but keeping it for now
-                    pixels = pixels.copy()
-                    good = pixels >= 0
-                    pixels[good] = hp.ring2nest(nside, pixels[good])
+                del commonflags
+                if self._purge_flags and self._common_flag_name is not None:
+                    tod.cache.clear(self._common_flag_name)
+                global_offset = offset
+            else:# pair-differencing case, assuming local dets come in pairs
+                for idet, det in enumerate(detectors):
+                    # Optionally get the flags, otherwise they are
+                    # assumed to have been applied to the pixel numbers.
+                    # N.B: MAPPRAISER doesn't use flags for now but might be useful for
+                    # future updates.
 
-                if self._apply_flags:
-                    pixels = pixels.copy()
-                    pixels[flags] = -1
+                    if self._apply_flags:
+                        detflags = tod.local_flags(det, self._flag_name)
+                        commonflags = tod.local_common_flags(self._common_flag_name)
+                        flags = np.logical_or(
+                            (detflags & self._flag_mask) != 0,
+                            (commonflags & self._common_flag_mask) != 0,
+                        )
+                        del detflags
 
-                offset = global_offset
-                nn = len(pixels)
-                dslice = slice(
-                    (idet * nsamp + offset) * nnz,
-                    (idet * nsamp + offset + nn) * nnz,
-                )
-                # nnz = 3 is a mandatory assumption here (could easily be generalized ...)
-                self._mappraiser_pixels[dslice] = nnz * np.repeat(pixels,nnz)
-                self._mappraiser_pixels[dslice][1::nnz] += 1
-                self._mappraiser_pixels[dslice][2::nnz] += 2
-                offset += nn
+                    # get the pixels for the valid intervals from the cache
+                    if (idet % 2) == 0:
+                        pixelsname = "{}_{}".format(self._pixels, det)
+                        pixels_0 = tod.cache.reference(pixelsname)
+                        pixels_dtype = pixels_0.dtype
 
-                del pixels
-                if self._apply_flags:
-                    del flags
+                        if not self._pixels_nested:
+                            # Madam expects the pixels to be in nested ordering.
+                            # This is not the case for Mappraiser but keeping it for now
+                            pixels_0 = pixels_0.copy()
+                            good = pixels_0 >= 0
+                            pixels_0[good] = hp.ring2nest(nside, pixels_0[good])
 
-            # Always purge the pixels but restore them from the Mappraiser
-            # buffers when purge_pixels = False
-            # Purging MUST happen after all detectors are staged because
-            # some the pixel numbers may be aliased between detectors
-            for det in detectors:
-                pixelsname = "{}_{}".format(self._pixels, det)
-                # cache.clear() will not fail if the object was already
-                # deleted as an alias
-                tod.cache.clear(pixelsname)
-                if self._purge_flags and self._flag_name is not None:
-                    cacheflagname = "{}_{}".format(self._flag_name, det)
-                    tod.cache.clear(cacheflagname)
+                        if self._apply_flags:
+                            pixels_0 = pixels.copy()
+                            pixels_0[flags] = -1
 
-            del commonflags
-            if self._purge_flags and self._common_flag_name is not None:
-                tod.cache.clear(self._common_flag_name)
-            global_offset = offset
+                        offset = global_offset
+                        nn = len(pixels_0)
+                        dslice = slice(
+                            (int(idet/2) * nsamp + offset) * (nnz-1),
+                            (int(idet/2) * nsamp + offset + nn) * (nnz-1),
+                        )
+                        # nnz>1 general case
+                        self._mappraiser_pixels[dslice] = (nnz-1) * np.repeat(pixels_0,(nnz-1))
+                        if nnz - 1 > 1:
+                            for k in range(1,nnz-1):
+                                self._mappraiser_pixels[dslice][k::nnz-1] += k
+                        offset += nn
+
+                        del pixels_0
+                        if self._apply_flags:
+                            del flags
+
+                # Always purge the pixels but restore them from the Mappraiser
+                # buffers when purge_pixels = False
+                # Purging MUST happen after all detectors are staged because
+                # some the pixel numbers may be aliased between detectors
+                for det in detectors:
+                    pixelsname = "{}_{}".format(self._pixels, det)
+                    # cache.clear() will not fail if the object was already
+                    # deleted as an alias
+                    tod.cache.clear(pixelsname)
+                    if self._purge_flags and self._flag_name is not None:
+                        cacheflagname = "{}_{}".format(self._flag_name, det)
+                        tod.cache.clear(cacheflagname)
+
+                del commonflags
+                if self._purge_flags and self._common_flag_name is not None:
+                    tod.cache.clear(self._common_flag_name)
+                global_offset = offset
         return pixels_dtype
 
     @function_timer
@@ -833,40 +968,72 @@ class OpMappraiser(Operator):
             nodecomm.Barrier()
             timer.start()
             if nodecomm.rank % nread == iread:
-                self._mappraiser_pixweights = self._cache.create(
-                "pixweights", mappraiser.WEIGHT_TYPE, (nsamp * ndet * nnz,)
-                )
+                if not self._pair_diff:
+                    self._mappraiser_pixweights = self._cache.create(
+                    "pixweights", mappraiser.WEIGHT_TYPE, (nsamp * ndet * nnz,)
+                    )
+                else:
+                    self._mappraiser_pixweights = self._cache.create(
+                    "pixweights", mappraiser.WEIGHT_TYPE, (nsamp * int(ndet/2) * (nnz-1),)
+                    )
                 self._mappraiser_pixweights[:] = 0
 
                 global_offset = 0
                 for iobs, obs in enumerate(self._data.obs):
                     tod = obs["tod"]
-
-                    for idet, det in enumerate(detectors):
-                        # get the pixels and weights for the valid intervals
-                        # from the cache
-                        weightsname = "{}_{}".format(self._weights, det)
-                        weights = tod.cache.reference(weightsname)
-                        weight_dtype = weights.dtype
-                        offset = global_offset
-                        nn = len(weights)
-                        dwslice = slice(
-                        (idet * nsamp + offset) * nnz,
-                        (idet * nsamp + offset + nn) * nnz,
-                        )
-                        self._mappraiser_pixweights[dwslice] = weights.flatten()[
-                        ::nnz_stride
-                        ]
-                        offset += nn
-                        del weights
-                    # Purge the weights but restore them from the Mappraiser
-                    # buffers when purge_weights=False.
-                    if purge:
+                    if not self._pair_diff:
                         for idet, det in enumerate(detectors):
+                            # get the pixels and weights for the valid intervals
+                            # from the cache
                             weightsname = "{}_{}".format(self._weights, det)
-                            tod.cache.clear(pattern=weightsname)
+                            weights = tod.cache.reference(weightsname)
+                            weight_dtype = weights.dtype
+                            offset = global_offset
+                            nn = len(weights)
+                            dwslice = slice(
+                            (idet * nsamp + offset) * nnz,
+                            (idet * nsamp + offset + nn) * nnz,
+                            )
+                            self._mappraiser_pixweights[dwslice] = weights.flatten()[
+                            ::nnz_stride
+                            ]
+                            offset += nn
+                            del weights
+                        # Purge the weights but restore them from the Mappraiser
+                        # buffers when purge_weights=False.
+                        if purge:
+                            for idet, det in enumerate(detectors):
+                                weightsname = "{}_{}".format(self._weights, det)
+                                tod.cache.clear(pattern=weightsname)
 
-                    global_offset = offset
+                        global_offset = offset
+                    else:# pair-differencing case, assuming local dets come in pairs
+                        for idet, det in enumerate(detectors):
+                            # get the pixels and weights for the valid intervals
+                            # from the cache
+                            if (idet % 2) == 0:
+                                weightsname = "{}_{}".format(self._weights, det)
+                                weights_0 = tod.cache.reference(weightsname)
+                                weight_dtype = weights_0.dtype
+                                offset = global_offset
+                                nn = len(weights_0)
+                                dwslice = slice(
+                                (int(idet/2) * nsamp + offset) * (nnz-1),
+                                (int(idet/2) * nsamp + offset + nn) * (nnz-1),
+                                )
+                                self._mappraiser_pixweights[dwslice] = weights_0[:,1:].flatten()[ #do not read intensity weights
+                                ::nnz_stride
+                                ]
+                                offset += nn
+                                del weights_0
+                        # Purge the weights but restore them from the Mappraiser
+                        # buffers when purge_weights=False.
+                        if purge:
+                            for idet, det in enumerate(detectors):
+                                weightsname = "{}_{}".format(self._weights, det)
+                                tod.cache.clear(pattern=weightsname)
+
+                        global_offset = offset
             if self._verbose and nread > 1:
                 nodecomm.Barrier()
                 if self._rank == 0:
