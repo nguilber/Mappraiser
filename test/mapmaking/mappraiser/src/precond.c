@@ -33,11 +33,11 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, 
   int info, nb, lda;
   double anorm, rcond;
 
-  int iw[3];
-  double w[18];
-  double x[9];
-  nb = 3;
-  lda = 3;
+  int *iw = (int *) calloc(A->nnz, sizeof(int));
+  double *w = (double *) calloc(A->nnz * 4, sizeof(double));
+  double *x = (double *) calloc(A->nnz * A->nnz, sizeof(double));
+  nb = A->nnz;
+  lda = A->nnz;
 
   m = A->m;
   m_cut = m;
@@ -63,19 +63,24 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, 
   //   }
   // }
   //Compute local Atdiag(N^1)A
+  // printf("Test0\n");
+  // fflush(stdout);
   getlocalW(A, Nm1, vpixBlock, lhits);
+  // printf("Test-p0\n");
+  // fflush(stdout);
   // sum hits globally
-  for(i=0;i<n;i+=3){
-    hits_proc[i] = lhits[(int)i/3];
-    hits_proc[i+1] = lhits[(int)i/3];
-    hits_proc[i+2] = lhits[(int)i/3];
+  for(i=0;i<n;i+=A->nnz){
+    for(j=0;j<A->nnz;j++){
+      hits_proc[i+j] = lhits[(int)i/A->nnz];
+    }
   }
   commScheme(A, hits_proc, 2);
-  for(i=0;i<n;i+=3){
-    lhits[(int)i/3] = (int)hits_proc[i];
+  for(i=0;i<n;i+=A->nnz){
+    lhits[(int)i/A->nnz] = (int)hits_proc[i];
   }
   free(hits_proc);
-
+  // printf("Test-p1\n");
+  // fflush(stdout);
 
 
   //communicate with the other processes to have the global reduce
@@ -92,39 +97,43 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, 
     }
   }
 
-  for(i=3;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
+  for(i=A->nnz;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
     for(j=0;j<(A->nnz);j++)
-      vpixBlock_loc[(i-3)/(A->nnz)+j] = vpixBlock[i+j];
+      vpixBlock_loc[(i-A->nnz)/(A->nnz)+j] = vpixBlock[i+j];
   }
   commScheme(A, vpixBlock_loc, 2);
-  for(i=3;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
+  for(i=A->nnz;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
     for(j=0;j<(A->nnz);j++)
-      vpixBlock[i+j] = vpixBlock_loc[(i-3)/(A->nnz)+j];
+      vpixBlock[i+j] = vpixBlock_loc[(i-A->nnz)/(A->nnz)+j];
+  }
+  if(A->nnz == 3){
+    for(i=6;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
+      for(j=0;j<(A->nnz);j++)
+        vpixBlock_loc[(i-6)/(A->nnz)+j] = vpixBlock[i+j];
+    }
+    commScheme(A, vpixBlock_loc, 2);
+    for(i=6;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
+      for(j=0;j<(A->nnz);j++)
+        vpixBlock[i+j] = vpixBlock_loc[(i-6)/(A->nnz)+j];
+    }
   }
 
-  for(i=6;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
-    for(j=0;j<(A->nnz);j++)
-      vpixBlock_loc[(i-6)/(A->nnz)+j] = vpixBlock[i+j];
-  }
-  commScheme(A, vpixBlock_loc, 2);
-  for(i=6;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
-    for(j=0;j<(A->nnz);j++)
-      vpixBlock[i+j] = vpixBlock_loc[(i-6)/(A->nnz)+j];
-  }
-
+  // printf("Test-p2\n");
+  // fflush(stdout);
   //Compute the inverse of the global AtA blocks (beware this part is only valid for nnz = 3)
   int uncut_pixel_index = 0;
   for(i=0;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
     // lhits[(int)i/((A->nnz)*(A->nnz))] = (int)vpixBlock[i];
     //init 3x3 block
-    double block[3][3];
-    for(j=0;j<3;j++){
-      for(k=0;k<3;k++){
-        block[j][k] = vpixBlock[i+(j*3)+k];
-        x[k+3*j] = block[j][k];
+    double *block = (double *) calloc(A->nnz*A->nnz,sizeof(double));
+    for(j=0;j<A->nnz;j++){
+      for(k=0;k<A->nnz;k++){
+        block[j*A->nnz+k] = vpixBlock[i+(j*A->nnz)+k];
+        x[k+A->nnz*j] = block[j*A->nnz+k];
       }
     }
-
+    // printf("Test-p3\n");
+    // fflush(stdout);
     //Compute the reciprocal of the condition number of the block
 
     /* Computes the norm of x */
@@ -138,28 +147,46 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, 
     dgecon_("1", &nb, x, &lda, &anorm, &rcond, w, iw, &info, 1);
     // if (info != 0) fprintf(stderr, "failure with error %d\n", info);
 
-    cond[(int)i/9] = rcond;
-
+    cond[(int)i/(A->nnz*A->nnz)] = rcond;
+    // printf("Test-p4\n");
+    // fflush(stdout);
     //Compute det
     //TODO: This should take into account the fact that the blocks are symmetric
-    det = block[0][0] * (block[1][1] * block[2][2] - block[2][1] * block[1][2]) -
-             block[0][1] * (block[1][0] * block[2][2] - block[1][2] * block[2][0]) +
-             block[0][2] * (block[1][0] * block[2][1] - block[1][1] * block[2][0]);
+    if(A->nnz == 3){
+      det = block[0] * (block[1*3+1] * block[2*3+2] - block[2*3+1] * block[1*3+2]) -
+               block[0*3+1] * (block[1*3 +0] * block[2*3+2] - block[1*3+2] * block[2*3+0]) +
+               block[0*3+2] * (block[1*3+0] * block[2*3+1] - block[1*3+1] * block[2*3+0]);
+    }
+    else if(A->nnz == 2){
+      det = block[0]*block[1*2+1]-block[0*2+1]*block[1*2+0];
+    }
+    // printf("Test-p5\n");
+    // fflush(stdout);
 
     if(rcond > 1e-1){
     invdet = 1 / det;
 
     //Compute the inverse coeffs
     //TODO: This should take into account the fact that the blocks are symmetric
-    vpixBlock[i] = (block[1][1] * block[2][2] - block[2][1] * block[1][2]) * invdet;
-    vpixBlock[i+1] = (block[0][2] * block[2][1] - block[0][1] * block[2][2]) * invdet;
-    vpixBlock[i+2] = (block[0][1] * block[1][2] - block[0][2] * block[1][1]) * invdet;
-    vpixBlock[i+3] = (block[1][2] * block[2][0] - block[1][0] * block[2][2]) * invdet;
-    vpixBlock[i+4] = (block[0][0] * block[2][2] - block[0][2] * block[2][0]) * invdet;
-    vpixBlock[i+5] = (block[1][0] * block[0][2] - block[0][0] * block[1][2]) * invdet;
-    vpixBlock[i+6] = (block[1][0] * block[2][1] - block[2][0] * block[1][1]) * invdet;
-    vpixBlock[i+7] = (block[2][0] * block[0][1] - block[0][0] * block[2][1]) * invdet;
-    vpixBlock[i+8] = (block[0][0] * block[1][1] - block[1][0] * block[0][1]) * invdet;
+    if(A->nnz == 3){
+      vpixBlock[i] = (block[1*3+1] * block[2*3+2] - block[2*3+1] * block[1*3+2]) * invdet;
+      vpixBlock[i+1] = (block[0*3+2] * block[2*3+1] - block[0*3+1] * block[2*3+2]) * invdet;
+      vpixBlock[i+2] = (block[0*3+1] * block[1*3+2] - block[0*3+2] * block[1*3+1]) * invdet;
+      vpixBlock[i+3] = (block[1*3+2] * block[2*3+0] - block[1*3+0] * block[2*3+2]) * invdet;
+      vpixBlock[i+4] = (block[0*3+0] * block[2*3+2] - block[0*3+2] * block[2*3+0]) * invdet;
+      vpixBlock[i+5] = (block[1*3+0] * block[0*3+2] - block[0*3+0] * block[1*3+2]) * invdet;
+      vpixBlock[i+6] = (block[1*3+0] * block[2*3+1] - block[2*3+0] * block[1*3+1]) * invdet;
+      vpixBlock[i+7] = (block[2*3+0] * block[0*3+1] - block[0*3+0] * block[2*3+1]) * invdet;
+      vpixBlock[i+8] = (block[0*3+0] * block[1*3+1] - block[1*3+0] * block[0*3+1]) * invdet;
+    }
+    else if(A->nnz == 2){
+      vpixBlock[i] = block[1*2+1] * invdet;
+      vpixBlock[i+1] = -block[0*2+1] * invdet;
+      vpixBlock[i+2] = -block[1*2+0] * invdet;
+      vpixBlock[i+3] = block[0] * invdet;
+    }
+    // printf("Test-p6\n");
+    // fflush(stdout);
     }
     else{// Remove the degenerate pixels from the map-making
 

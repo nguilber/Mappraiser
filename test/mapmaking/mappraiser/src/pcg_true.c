@@ -64,7 +64,11 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   // precondjacobilike( A, Nm1, lhits, cond, c);
  // precondjacobilike_avg( A, Nm1, c);
  // Compute preconditioner and process degenerate pixels
+  // printf("Test\n");
+  // fflush(stdout);
   precondblockjacobilike(A, Nm1, &BJ, b, cond, lhits);
+  // printf("Post\n");
+  // fflush(stdout);
 // Redefine number of pixels in the map
   n=A->lcount-(A->nnz)*(A->trash_pix);
 // Reallocate memory for well-conditioned map
