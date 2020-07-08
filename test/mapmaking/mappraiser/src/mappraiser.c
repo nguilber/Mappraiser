@@ -213,12 +213,6 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int pointing_com
   if (rank==0) {
     printf("[rank %d] Total PCG time=%lf \n", rank, t-st);
   }
-
-  
-  printf("Ok for me : %i\n", rank);
-  MPI_Barrier(comm);
-  fflush(stdout);
-
 /* //write output to fits files: */
 /*   st=MPI_Wtime(); */
 /*   int mapsize = A.lcount-(A.nnz)*(A.trash_pix); */
