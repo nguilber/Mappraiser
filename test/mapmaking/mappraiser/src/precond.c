@@ -529,7 +529,8 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   int np;                             // number of pixels   
   double *ATA;                        // Array to store the (A_i.T * A_i) block operator
   fftw_complex *in;                   // Vector to store entry of the FFT                                                   
-  fftw_complex *out;                  // Vector to store output of the FFT                                                  
+  fftw_complex *out;                  // Vector to store output of the FFT
+  // double *diagNm1;                    // Vector to store the diagonal of Nm1
   double *x;                          // Vector to store eigen vector w.r.t to one bloc                                     
   double *y;                          // Vector to store A_i.T * x                                                          
   double *z;                          // Vector to store (A_i.T * A_i)^{-1} * y                                             
@@ -542,6 +543,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   np = n/nnz;
   y = (double *) calloc(n,sizeof(double));
   z = (double *) malloc(n*sizeof(double));
+  // getlocDiagN(A,Nm1,diagNm1);
     
   for (i0 = 0; i0 < nb_blocks_loc; ++i0) {
     nti = tpltzblocks[i0].n; // Size of the block

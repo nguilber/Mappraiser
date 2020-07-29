@@ -18,6 +18,7 @@
 #include "midapack.h"
 #include "mappraiser.h"
 #include <mkl.h>
+#include <arpack.h>
 
 
 
@@ -96,6 +97,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   double *Z2; // free l. 438
   double **arg1;
   double tol_svd;
+  double *Z3;
 
   int rest = rank%nb_task_per_node;
   
@@ -108,7 +110,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     }
     /* MPI_Barrier(comm); */
     fflush(stdout);
-    int nb_defl = 10; // To give as argument of PCG_GLS_true later on
+    int nb_defl = 50; // To give as argument of PCG_GLS_true later on
     int nb_blocks_loc;
     nb_blocks_loc = Nm1.nb_blocks_loc;
     
@@ -195,7 +197,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   location[0] = 0;
   // recvcount[0] = gather_lcount[0];
 
-  int twice;
+  /* int twice; */
   for (i0 = 1; i0 < nb_proc; ++i0) {
     // twice = gather_lcount[i0];
     // recvcount[i0] = twice;
@@ -244,7 +246,66 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   }
   
   free(gather_lindices);
-  free(invert_gather_lindices); 
+  free(invert_gather_lindices);
+
+  int *n_gather;
+  if (rank == 0) {
+    n_gather = (int *) malloc(sizeof(int)*nb_proc);
+  }
+
+  /* printf("r: %i, n: %i\n", rank,n); */
+  /* fflush(stdout); */
+
+  if (rank == 0) {
+    n_gather[0] = n;
+    for (i0 = 1; i0 < nb_proc; ++i0) {
+      MPI_Recv(&(n_gather[i0]),1,MPI_INT,i0,0,comm,MPI_STATUS_IGNORE);
+    }
+  }
+  else {
+    MPI_Send(&n,1,MPI_INT,0,0,comm);
+  }
+
+  
+  /* MPI_Gather(&n,1,MPI_INT,n_gather,nb_proc,MPI_INT,0,comm); */
+  
+  /* if (rank == 0) { */
+  /*   for (i0 = 0; i0 < nb_proc; ++i0) { */
+  /*     printf("n : %i\n", n_gather[i0]); */
+  /*   } */
+
+  /* } */
+  /* fflush(stdout); */
+  
+  if (rank == 0) {
+    location[0] = 0;
+    for (i0 = 0; i0 < nb_proc; ++i0) {
+      location[i0] = location[i0-1]+n_gather[i0-1];
+    }
+  }
+  
+  int *bij_reduce;
+  int n_tot = 0;
+
+  if (rank == 0) {
+    for (i0 = 0; i0 < nb_proc; ++i0) {
+      n_tot += n_gather[i0];
+      // printf("n_gather[%i] = %i\n", i0,n_gather[i0]);
+    }
+
+    bij_reduce = (int *) malloc(sizeof(int)*n_tot);
+    // printf("r: %i, location[-1] = %i, n_tot = %i\n",rank,location[nb_proc-1],n_tot);
+  }
+  fflush(stdout);
+
+  MPI_Gatherv(bij,n,MPI_INT,bij_reduce,n_gather,location,MPI_INT,0,comm);
+
+  /* printf("r: %i, HERE 301\n", rank); */
+  /* fflush(stdout); */
+
+
+
+  
   
   if (rank == 0) {
     printf("###### END From local map to map of undegenerated pixels #########\n");
@@ -257,29 +318,29 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
   int *size_on_proc_reduce;
   int tot_size_CS;
-  double *Z4 = NULL; // free l. 687    
+  double *Z4 = NULL; // free l. 687
   
   if (rest == 0) {
     
-    double *Z3 = (double *) calloc(dim_CS*new_size,sizeof(double)); // free l. 598
+    /* double *Z3 = (double *) calloc(dim_CS*new_size,sizeof(double)); // free l. 598 */
 
-    for (i0 = 0; i0 < new_size; ++i0) {
-      for (i1 = 0; i1 < n; ++i1) {
-	if (i0*dim_CS+bij[i1] >= new_size*dim_CS) {
-	  printf("r: %i FUCK4, element: %i, borne: %i, i0: %i, bij[i1]: %i\n", rank,i0*dim_CS+bij[i1],new_size*dim_CS,i0,bij[i1]);
-	  fflush(stdout);
-	}
+    /* for (i0 = 0; i0 < new_size; ++i0) { */
+    /*   for (i1 = 0; i1 < n; ++i1) { */
+    /* 	if (i0*dim_CS+bij[i1] >= new_size*dim_CS) { */
+    /* 	  printf("r: %i FUCK4, element: %i, borne: %i, i0: %i, bij[i1]: %i\n", rank,i0*dim_CS+bij[i1],new_size*dim_CS,i0,bij[i1]); */
+    /* 	  fflush(stdout); */
+    /* 	} */
     
-	Z3[i0*dim_CS+bij[i1]] = Z2[i0*n+i1];
-      }
-    }
+    /* 	Z3[i0*dim_CS+bij[i1]] = Z2[i0*n+i1]; */
+    /*   } */
+    /* } */
     
-    if (Z2 != NULL) {
-      free(Z2);
-    }
-    else {
-      printf("r: %i, Z2 NULL\n", rank);
-    }
+    /* if (Z2 != NULL) { */
+    /*   free(Z2); */
+    /* } */
+    /* else { */
+    /*   printf("r: %i, Z2 NULL\n", rank); */
+    /* } */
 
     
     if (rank == 0) {
@@ -303,7 +364,8 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     else {
       MPI_Send(&new_size,1,MPI_INT,0,0,comm);
     }
-    fflush(stdout);
+    
+    
     // MPI_Allreduce(size_on_proc,size_on_proc_reduce,nb_proc,MPI_INT,MPI_SUM,comm);
     /* MPI_Gather(&new_size,1,MPI_INT,size_on_proc_reduce,1,MPI_INT,0,comm); */
 
@@ -320,127 +382,193 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     
     int *location2;
     int *recvcount2;
-    
+        
     /* printf("r: %i, %i\n",rank,tot_size_CS); */
     if (rank == 0) {
-      Z4 = (double *) malloc(sizeof(double)*dim_CS*(tot_size_CS));
+      Z3 = (double *) malloc(sizeof(double)*dim_CS*(tot_size_CS));
       
       location2 = (int *) malloc(nb_proc*sizeof(int));
       recvcount2 = (int *) malloc(nb_proc*sizeof(int));
       
-      recvcount2[0] = size_on_proc_reduce[0]*dim_CS;
+      recvcount2[0] = size_on_proc_reduce[0]*n_gather[0];
       location2[0] = 0;
       
       for (i0 = 1; i0 < nb_proc/nb_task_per_node; ++i0) {
-	recvcount2[i0] = size_on_proc_reduce[i0]*dim_CS;
+	recvcount2[i0] = size_on_proc_reduce[i0]*n_gather[i0];
 	location2[i0] = location2[i0-1] + recvcount2[i0-1];
       }
 
       for (i0 = 0; i0 < new_size; ++i0) {
 	for (i1 = 0; i1 < dim_CS; ++i1) {
-	  Z4[i0*dim_CS+i1] = Z3[i0*dim_CS+i1];
+	  Z3[i0*dim_CS+bij_reduce[i1]] = Z2[i0*n_gather[0]+i1];
 	}
       }
       
 
     }
+    
 
     /* MPI_Barrier(comm); */
     printf("r: %i, Sending data to proc master rank=%i, new_size=%i, dim_CS=%i, data send total=%i, total_size_CS=%i\n",rank,0,new_size,dim_CS,new_size*dim_CS,tot_size_CS);
-    fflush(stdout);
-    
+        
     if (rank == 0) {
       int k = 1;
       for (i0 = nb_task_per_node; i0 < nb_proc; i0+=nb_task_per_node) {
-	MPI_Recv(&(Z4[location2[k]]),recvcount2[k],MPI_DOUBLE,i0,0,comm,MPI_STATUS_IGNORE);
+
+	double *temporary = (double *) malloc(sizeof(double)*recvcount2[k]);
+	
+	
+	MPI_Recv(temporary,recvcount2[k],MPI_DOUBLE,i0,0,comm,MPI_STATUS_IGNORE);
+	
+	for (i1 = 0; i1 < size_on_proc_reduce[k]; ++i1) {
+	  for (i2 = 0; i2 < n_gather[k]; ++i2) {
+
+	    if (location[k]+i2 >= n_tot) {
+	      printf("index problem k = %i : location2[k]+i2 = %i and n_tot = %i\n", k,location[k]+i2,n_tot);
+	    }
+
+	    if (i1*n_gather[k]+i2 >= recvcount2[k]) {
+	      printf("index problem k = %i : i1*n_gather[k]+i2 = %i and recvcount2[k] = %i\n", k,i1*n_gather[k]+i2,recvcount2[k]);
+	    }
+
+	    if (location2[k]+i1*dim_CS+bij_reduce[location[k]+i2] >= dim_CS*tot_size_CS) {
+	      printf("index problem k = %i : location2[k]+i1*dim_CS+bij_reduce[location2[k]+i2] = %i and dim_CS*tot_size_CS = %i\n", k,location2[k]+i1*dim_CS+bij_reduce[location[k]+i2],dim_CS*tot_size_CS);
+	    }
+	    
+	    Z3[location2[k]+i1*dim_CS+bij_reduce[location[k]+i2]] = temporary[i1*n_gather[k]+i2];
+	  }
+	}	
 	++k;
+	free(temporary);
+
       }
     }
     else {
-      MPI_Send(Z3,new_size*dim_CS,MPI_DOUBLE,0,0,comm);
-
-    }
+      MPI_Send(Z2,new_size*n,MPI_DOUBLE,0,0,comm);
+    }    
     
+    /* MPI_Gatherv(Z3,new_size*dim_CS,MPI_DOUBLE,Z3,recvcount2,location2,MPI_DOUBLE,0,comm); */
     
-    /* MPI_Gatherv(Z3,new_size*dim_CS,MPI_DOUBLE,Z4,recvcount2,location2,MPI_DOUBLE,0,comm); */
-    
-    if (Z3 != NULL) {
-      free(Z3);
+    if (Z2 != NULL) {
+      free(Z2);
     }
     else {
-      printf("r: %i, Z3 NULL\n", rank);
+      printf("r: %i, Z2 NULL\n", rank);
     }
     /* MPI_Barrier(comm); */
     
     if (rank == 0) {
       printf("######## End Communicate CS ##############\n");
     }
-    fflush(stdout);
-    
+        
   }
-      
+  fflush(stdout);
+
   /* double **arg1 = (double **) malloc(sizeof(double *)); */
   if (rank == 0) {
-    *arg1 = Z4;
+    *arg1 = Z3;
     
     // Orthogonalize the coarse space Z on a proc
     new_size = Orthogonalize_Space_loc(arg1,dim_CS,tot_size_CS,tol_svd,rank);
 
     printf("r: %i : Nb of vec in CS before sending to everyone : %i\n", rank, new_size);
-    fflush(stdout);
-    
-    if (Z4 != NULL) {
-      free(Z4);
+
+    if (Z3 != NULL) {
+      free(Z3);
     }
     else {
-      printf("Z4 NULL\n");
+      printf("Z3 NULL\n");
     }
-
+    
   }
-
-
+  fflush(stdout);
+  
   MPI_Bcast(&new_size,1,MPI_INT,0,comm);
 
   double *Z5;
+  double *Z6;
 
-
-  int nb_col_Q = new_size;
+  int nb_col_Q = 300;
   
   if (rank == 0) {
-    Z5 = *arg1;
-  }
-  else {
-    Z5 = (double *) malloc(dim_CS*nb_col_Q*sizeof(double));
-  }
-  
-  MPI_Bcast(Z5,nb_col_Q*dim_CS,MPI_DOUBLE,0,comm);
-  
-  double *Z6 = (double *) malloc(n*nb_col_Q*sizeof(double));  
-  
-  for (i0 = 0; i0 < nb_col_Q; ++i0) {
-    for (i1 = 0; i1 < n; ++i1) {
-      Z6[i0*n+i1] = Z5[i0*dim_CS+bij[i1]];
+    Z4 = *arg1;
+
+    Z5 = (double *)  malloc(sizeof(double)*n_gather[0]*nb_col_Q);
+
+    for (i1 = 0; i1 < nb_col_Q; ++i1) {
+      for (i2 = 0; i2 < n_gather[0]; ++i2) {
+	Z5[i1*n_gather[0]+i2] = Z4[i1*dim_CS+bij_reduce[location[0]+i2]];
+      }
+    }
+    
+
+    for (i0 = 1; i0 < nb_proc; ++i0) {
+      Z6 = (double *)  malloc(sizeof(double)*n_gather[i0]*nb_col_Q);
+
+      for (i1 = 0; i1 < nb_col_Q; ++i1) {
+	for (i2 = 0; i2 < n_gather[i0]; ++i2) {
+	  Z6[i1*n_gather[i0]+i2] = Z4[i1*dim_CS+bij_reduce[location[i0]+i2]];
+	}	
+      }
+
+      MPI_Send(Z6,n_gather[i0]*nb_col_Q,MPI_DOUBLE,i0,0,comm);
+      
+      free(Z6);
     }
   }
+  else {
+    Z5 = (double *) malloc(n*nb_col_Q*sizeof(double));
+
+    MPI_Recv(Z5,n*nb_col_Q,MPI_DOUBLE,0,0,comm,MPI_STATUS_IGNORE);
+  }
+
+  MPI_Barrier(comm);
+  if (rank == 0) {
+    printf("We are done sending it to everyone\n");
+  }
+  fflush(stdout);
+  
+  
+  /* MPI_Bcast(Z5,nb_col_Q*dim_CS,MPI_DOUBLE,0,comm); */
+  
+  /* double *Z6 = (double *) malloc(n*nb_col_Q*sizeof(double));   */
+  
+  /* for (i0 = 0; i0 < nb_col_Q; ++i0) { */
+  /*   for (i1 = 0; i1 < n; ++i1) { */
+  /*     Z6[i0*n+i1] = Z5[i0*dim_CS+bij[i1]]; */
+  /*   } */
+  /* } */
   
   double *pz = (double *) malloc(m*sizeof(double));
   double *pTnpz = (double *) malloc(n*sizeof(double));
   
   double *Z7 = (double *) calloc(dim_CS*nb_col_Q,sizeof(double));
+
+  /* double norm; */
   
   for (i0 = 0; i0 < nb_col_Q; ++i0) {
-    MatVecProd(A,&(Z6[i0*n]),pz,0);
+    MatVecProd(A,&(Z5[i0*n]),pz,0);
+
     stbmmProd(Nm1,pz);
     TrMatVecProd(A,pz,pTnpz,0);
+    
+    /* norm = 0; */
+
     for (i1 = 0; i1 < n; ++i1) {
       Z7[i0*dim_CS+bij[i1]] = pTnpz[i1]; // divide by the number of proc that watch pixel i1 ? No, apparently
+      // norm += pTnpz[i1];
     }
+
+    /* printf("r: %i, norm = %f\n", rank,sqrt(norm)); */
+    /* fflush(stdout); */
   }
 
-  printf("r: %i, DONE APPLYING THE OPERATOR\n", rank);
+  MPI_Barrier(comm);
+  if (rank == 0) {
+    printf("We are done applying the operator to the CS\n");
+  }
   fflush(stdout);
   
-  double *E = (double *) malloc(sizeof(double)*nb_col_Q*nb_col_Q);
   double *Z8 = NULL;
   
   if (rank == 0) {
@@ -451,9 +579,14 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     
   MPI_Reduce(Z7,Z8,nb_col_Q*dim_CS,MPI_DOUBLE,MPI_SUM,0,comm); // Can first and second argument be the same ?
 
+  free(Z7);
+  double *E = (double *) malloc(sizeof(double)*nb_col_Q*nb_col_Q);
+  
   if (rank ==0) {
       
-    cblas_dgemm(CblasColMajor,CblasTrans,CblasNoTrans,nb_col_Q,nb_col_Q,dim_CS,1,Z5,dim_CS,Z8,dim_CS,0,E,nb_col_Q);
+    cblas_dgemm(CblasColMajor,CblasTrans,CblasNoTrans,nb_col_Q,nb_col_Q,dim_CS,1,Z4,dim_CS,Z8,dim_CS,0,E,nb_col_Q);
+
+    free(Z4);
   
     // ###### Call LAPACK routines to compute Cholesky factorisation of E
     info = LAPACKE_dpotrf(LAPACK_ROW_MAJOR,'L',nb_col_Q,E,nb_col_Q);
@@ -553,7 +686,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
    double *EZTg = (double *) malloc(nb_col_Q*sizeof(double));
 
-   cblas_dgemv(CblasColMajor, CblasTrans, n, nb_col_Q, 1, Z6, n, g, 1, 0, EZTg, 1);
+   cblas_dgemv(CblasColMajor, CblasTrans, n, nb_col_Q, 1, Z5, n, g, 1, 0, EZTg, 1);
 
    /* double *EQg = (double *) malloc(nb_col_Q*sizeof(double)); */
 
@@ -565,7 +698,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
    double *Qg = (double *) malloc(n*sizeof(double));
 
-   cblas_dgemv(CblasColMajor, CblasNoTrans, n, nb_col_Q, 1, Z6, n, EZTg, 1, 0, Qg, 1);
+   cblas_dgemv(CblasColMajor, CblasNoTrans, n, nb_col_Q, 1, Z5, n, EZTg, 1, 0, Qg, 1);
 
    /* double *Qg_compress = (double *) malloc(n*sizeof(double)); */
 
@@ -718,7 +851,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
      /* double *EZTg = (double *) malloc(nb_col_Q*sizeof(double)); */
 
-     cblas_dgemv(CblasColMajor, CblasTrans, n, nb_col_Q, 1, Z6, n, g, 1, 0, EZTg, 1);
+     cblas_dgemv(CblasColMajor, CblasTrans, n, nb_col_Q, 1, Z5, n, g, 1, 0, EZTg, 1);
 
      /* double *EQg = (double *) malloc(nb_col_Q*sizeof(double)); */
 
@@ -728,7 +861,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
        printf("Something went wrong applying E inverse to a vector : info = %i\n",info);
      }
 
-     cblas_dgemv(CblasColMajor, CblasNoTrans, n, nb_col_Q, 1, Z6, n, EZTg, 1, 0, Qg, 1);
+     cblas_dgemv(CblasColMajor, CblasNoTrans, n, nb_col_Q, 1, Z5, n, EZTg, 1, 0, Qg, 1);
 
      /* double *Qg_compress = (double *) malloc(n*sizeof(double)); */
 
