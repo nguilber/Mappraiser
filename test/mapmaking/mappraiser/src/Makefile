@@ -40,9 +40,12 @@ LIBpreAlps            += -L$(MKL_LIB) -lmkl_rt
 #supplementary libraries
 HEALPIX_INC = -I$(HOME)/Healpix_3.50/include
 CFITSIO_INC = -I/usr/common/software/cfitsio/3.47/include
+ARPACK_INC = -I/usr/common/software/arpack-ng/3.7.0/hsw/include/arpack/
+
 
 HEALPIX_LIB = -L$(HOME)/Healpix_3.50/lib -lchealpix -lhealpix
 CFITSIO_LIB = -L/usr/common/software/cfitsio/3.47/lib -lcfitsio
+ARPACK_LIB = -L/usr/common/software/arpack-ng/3.7.0/hsw/lib64/ -larpack
 
 ##############   t e s t s   ############
 
@@ -62,7 +65,7 @@ $(MAPPRAISER_OBJ)/createToeplitz.o: createToeplitz.c
 	$(CC) -c $< $(INC) $(LIB) -o $@
 
 $(MAPPRAISER_OBJ)/precond.o: precond.c
-	$(CC) -c $< $(INC) $(LIB) -o $@
+	$(CC) -c $< $(INC) $(LIB) $(ARPACK_INC) $(ARPACK_LIB) -o $@
 
 $(MAPPRAISER_OBJ)/pcg_true.o: pcg_true.c
 	$(CC) -c $< $(INC) $(LIB) -o $@

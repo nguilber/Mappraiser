@@ -18,7 +18,6 @@
 #include "midapack.h"
 #include "mappraiser.h"
 #include <mkl.h>
-#include <arpack.h>
 
 
 
@@ -80,6 +79,13 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   
 // Redefine number of pixels in the map
   n=A->lcount-(A->nnz)*(A->trash_pix);
+
+  if (A->nnz > 3) {
+    printf("r: %i, A->nnz = %i\n", rank,A->nnz);
+    fflush(stdout);
+  }
+  
+  
 // Reallocate memory for well-conditioned map
   tmp = realloc(x, n * sizeof(double));
   if(tmp !=NULL){
@@ -110,7 +116,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     }
     /* MPI_Barrier(comm); */
     fflush(stdout);
-    int nb_defl = 50; // To give as argument of PCG_GLS_true later on
+    int nb_defl = 10; // To give as argument of PCG_GLS_true later on
     int nb_blocks_loc;
     nb_blocks_loc = Nm1.nb_blocks_loc;
     
@@ -488,7 +494,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   double *Z5;
   double *Z6;
 
-  int nb_col_Q = 300;
+  int nb_col_Q = new_size;
   
   if (rank == 0) {
     Z4 = *arg1;

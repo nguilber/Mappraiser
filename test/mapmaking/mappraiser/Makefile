@@ -36,9 +36,11 @@ LIBpreAlps            += -L$(MKL_LIB) -lmkl_rt
 #supplementary libraries
 HEALPIX_INC = -I$(HOME)/Healpix_3.50/include
 CFITSIO_INC = -I/usr/common/software/cfitsio/3.47/include
+ARPACK_INC = -I/usr/common/software/arpack-ng/3.7.0/hsw/include/arpack/
 
 HEALPIX_LIB = -L$(HOME)/Healpix_3.50/lib -lchealpix -lhealpix
 CFITSIO_LIB = -L/usr/common/software/cfitsio/3.47/lib -lcfitsio
+ARPACK_LIB = -L/usr/common/software/arpack-ng/3.7.0/hsw/lib64/ -larpack
 
 ##############   t e s t s   ############
 
@@ -52,7 +54,7 @@ map: ./src/
 	make -C ./src/
 
 library:
-	cc -qopenmp -shared $(MAPPRAISER_OBJ)/createToeplitz.o $(MAPPRAISER_OBJ)/precond.o $(MAPPRAISER_OBJ)/pcg_true.o $(MAPPRAISER_OBJ)/ecg.o $(MAPPRAISER_OBJ)/iofiles.o $(MAPPRAISER_OBJ)/mappraiser.o $(LIB) $(CFITSIO_LIB) $(LIBpreAlps) -o $(MAPPRAISER_LIB)/libmappraiser.so
+	cc -g -O0 -qopenmp -shared $(MAPPRAISER_OBJ)/createToeplitz.o $(MAPPRAISER_OBJ)/precond.o $(MAPPRAISER_OBJ)/pcg_true.o $(MAPPRAISER_OBJ)/ecg.o $(MAPPRAISER_OBJ)/iofiles.o $(MAPPRAISER_OBJ)/mappraiser.o $(LIB) $(CFITSIO_LIB) $(LIBpreAlps) $(ARPACK_LIB) -o $(MAPPRAISER_LIB)/libmappraiser.so
 
 ##############   u t i l s   #############
 

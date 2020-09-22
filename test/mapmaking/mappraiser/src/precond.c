@@ -19,12 +19,28 @@
 #include "mappraiser.h"
 #include <fftw3.h>
 #include <mkl.h>
+#include <arpackdef.h>
 
 extern int dgecon_(const char *norm, const int *n, double *a, const int *lda, const double *anorm, double *rcond, double *work, int *iwork, int *info, int len);
 extern int dgetrf_(const int *m, const int *n, double *a, const int *lda, int *lpiv, int *info);
 extern double dlange_(const char *norm, const int *m, const int *n, const double *a, const int *lda, double *work, const int norm_len);
 
 extern int dgeqp3(const int *m, const int *n, double *a, const int *lda, const double *tau, const double *work, const int *lwork, const int *info); //M, N, A, LDA, JPVT, TAU, WORK, LWORK, INFO
+
+extern void dsaupd_(int *ido, char *bmat, int *n, char *which,
+            int *nev, double *tol, double *resid, int *ncv,
+            double *v, int *ldv, int *iparam, int *ipntr,
+            double *workd, double *workl, int *lworkl,
+            int *info);
+
+extern void dseupd_(int *rvec, char *All, int *select, double *d,
+            double *v, int *ldv, double *sigma,
+            char *bmat, int *n, char *which, int *nev,
+            double *tol, double *resid, int *ncv, double *tv,
+            int *tldv, int *iparam, int *ipntr, double *workd,
+            double *workl, int *lworkl, int *ierr);
+
+/* void dsaupd_(int* ido, char *bmat, int *n, char *which, int *nev, double *tol, double *resid, int *ncv, double *v, int *ldv, int *iparam, int *ipntr, double *workd, double *workl, int *lworkl, int *info ); */
 
 int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, int *lhits)
 {
@@ -448,8 +464,21 @@ int Apply_ATA_bloc(Mat *A, double *ATA, double *y, double *z, int np)
   int info;            // LAPACK return variable
 
   nnz = A->nnz;
+  
+  int this = 5;  
+
+  if (nnz > this) {
+    printf("OK that's not normal : %i\n",nnz);
+    fflush(stdout);
+  }
+  
   tmp_blck = (double *) calloc(sizeof(double),nnz*nnz);
   tmp_vec = (double *) calloc(sizeof(double),nnz);
+
+  if (tmp_blck == NULL || tmp_vec ==NULL) {
+    printf("STOP, allocation went wrong\n");
+    fflush(stdout);
+  }
 
   for (i0 = 0; i0 < np; ++i0) {
 
@@ -528,13 +557,75 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   int nnz;                            // Number of non-zeros per line in A
   int np;                             // number of pixels   
   double *ATA;                        // Array to store the (A_i.T * A_i) block operator
-  fftw_complex *in;                   // Vector to store entry of the FFT                                                   
-  fftw_complex *out;                  // Vector to store output of the FFT
+  /* fftw_complex *in;                   // Vector to store entry of the FFT                                                    */
+  /* fftw_complex *out;                  // Vector to store output of the FFT */
   // double *diagNm1;                    // Vector to store the diagonal of Nm1
-  double *x;                          // Vector to store eigen vector w.r.t to one bloc                                     
-  double *y;                          // Vector to store A_i.T * x                                                          
+  double *x;                          // Vector to store eigen vector w.r.t to one bloc
+  // double *xx;
+  double *y;                          // Vector to store A_i.T * x
   double *z;                          // Vector to store (A_i.T * A_i)^{-1} * y                                             
   int i0,i1,i2,i3,i4;                 // loop indices
+  a_int ID0 = 0;
+  a_int N;
+  a_int NEV = nb_defl;
+  char *BMAT = "I";
+  char *WHICH = "SM";
+  double TOL = 1e-3;
+  double *RESID;
+  a_int NCV;
+  double *V;
+  a_int LDV;
+  a_int *IPARAM = (a_int *) calloc(11,sizeof(a_int));
+  a_int ISHIFT = 1;
+  a_int maxiter_arnoldi = 1000;
+  a_int NB = 1;
+  a_int MODE = 1;
+  IPARAM[0] = ISHIFT;
+  IPARAM[2] = maxiter_arnoldi;
+  IPARAM[3] = NB;
+  IPARAM[6] = MODE;
+  a_int *IPNTR = (a_int *) malloc(sizeof(a_int)*11);
+  double *WORKD;
+  double *WORKL;
+  a_int lworkl;
+  a_int INFO = 0;
+  double norm_residual;
+  double norm_residual_0;
+
+  /* (RVEC, HOWMANY, SELECT, D, Z, SIGMA, BMAT, N, WHICH, NEV, TOL, RESID, NCV, V, IPARAM, IPNTR, WORKD, WORKL, INFO) */
+
+/* extern void dsaupd_(int *ido, char *bmat, int *n, char *which, */
+/*             int *nev, double *tol, double *resid, int *ncv, */
+/*             double *v, int *ldv, int *iparam, int *ipntr, */
+/*             double *workd, double *workl, int *lworkl, */
+/*             int *info); */
+
+/* extern void dseupd_(int *rvec, char *All, int *select, double *d, */
+/*             double *v, int *ldv, double *sigma, */
+/*             char *bmat, int *n, char *which, int *nev, */
+/*             double *tol, double *resid, int *ncv, double *tv, */
+/*             int *tldv, int *iparam, int *ipntr, double *workd, */
+/*             double *workl, int *lworkl, int *ierr); */
+
+  a_int RVEC = 1;
+  char *HOWMANY = "A";
+  a_int *SELECT;
+  double *D = (double *) malloc(sizeof(double)*NEV);
+  double *Z;
+  a_int LDZ;
+  double SIGMA;
+
+  int vblock_size;
+  int blocksize;
+  fftw_complex *T_fft;
+  fftw_complex *V_fft;
+  double *V_rfft;
+  fftw_plan plan_f;
+  fftw_plan plan_b;
+  int nfft;
+  
+
+  
   
   nb_blocks_loc = Nm1.nb_blocks_loc;
   tpltzblocks = Nm1.tpltzblocks;
@@ -543,59 +634,231 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   np = n/nnz;
   y = (double *) calloc(n,sizeof(double));
   z = (double *) malloc(n*sizeof(double));
-  // getlocDiagN(A,Nm1,diagNm1);
+  /* getlocDiagN(A,Nm1,diagNm1); */
     
   for (i0 = 0; i0 < nb_blocks_loc; ++i0) {
+
+    
+    /* printf("r: %i, HERE\n",rank); */
+    /* fflush(stdout); */
+    
     nti = tpltzblocks[i0].n; // Size of the block
+
+    N = nti;
+    LDV = nti;
+    if (2*nb_defl+1 < N) {
+      NCV = 2*nb_defl+1;
+    }
+    else {
+      NCV = N;
+    }
+    if (NCV < 50) {
+      NCV = 50;
+    }
+    
+
+    
+    RESID = (double *) malloc(sizeof(double)*nti);
+    V = (double *) malloc(sizeof(double)*LDV*NCV);
+    WORKD = (double *) malloc(sizeof(double)*3*N);
+    lworkl = NCV*(NCV+8);
+    WORKL = (double *) malloc(sizeof(double)*lworkl);
+
+    SELECT = (a_int *) malloc(sizeof(a_int)*NCV);
+    Z = (double *) malloc(sizeof(double)*N*NEV);
+    LDZ = N;
     
     x = (double *) malloc(nti*sizeof(double));
+    /* xx = (double *) malloc(nti*sizeof(double)); */
 
+    if (RESID == NULL || V == NULL || WORKD == NULL || WORKL == NULL || SELECT == NULL || Z == NULL || x == NULL) {
+      printf("r: %i, allocation went south :\n", rank);
+      printf("RESID == %i || V == %i || WORKD == %i || WORKL == %i || SELECT == %i || Z == %i || x == %i\n", (int) RESID, (int) V, (int) WORKD, (int) WORKL, (int) SELECT, (int) Z, (int) x);
+      fflush(stdout);
+      
+    }
+    
     ATA = (double *)  calloc(np*nnz*nnz,sizeof(double));
 
     // ###### Build ATA w.r.t. the local block i0
     Build_ATA_bloc(A,Nm1,ATA,row_indice,nti,np,rank,i0);
     
-    in = (fftw_complex *) calloc(nti,sizeof(fftw_complex));
-    out = (fftw_complex *) calloc(nti,sizeof(fftw_complex));    
+    /* in = (fftw_complex *) calloc(nti,sizeof(fftw_complex)); */
+    /* out = (fftw_complex *) calloc(nti,sizeof(fftw_complex)); */
+
+    double *T_block = (double *) malloc(sizeof(double)*tpltzblocks[i0].lambda);
+    double d = tpltzblocks[i0].T_block[0];
+
+    /* printf("rank : %i, d/2 : %f\n", rank,d/2); */
+    /* fflush(stdout); */
+
+    for (i1 = 0; i1 < tpltzblocks[i0].lambda; ++i1) {
+      T_block[i1] = tpltzblocks[i0].T_block[i1]/d;
+      // T_block[i1] = 0;
+    }
+    
+    /* printf("r: %i, start test : blocksize %i, nfft %i\n", rank,blocksize,nfft); */
+    /* fflush(stdout); */
+
+    /* Tpltz my_block; */
+    /* my_block.nrow = N; */
+    /* my_block.m_cw = 1; */
+    /* my_block.m_rw = 1; */
+
+    /* Block *T; */
+    /* T = (Block *) malloc(sizeof(Block)*1); */
+
+    /* T->idv = 1; // tpltzblocks[i0].idv; */
+    /* T->T_block = T_block; // tpltzblocks[i0].T_block; */
+    /* T->lambda = 1; // tpltzblocks[i0].lambda; */
+    /* T->n = tpltzblocks[i0].n; */
+    
+    /* my_block.tpltzblocks = T; */
+    /* my_block.nb_blocks_loc = 1; */
+    /* my_block.nb_blocks_tot = 1; */
+    /* my_block.local_V_size = Nm1.local_V_size; */
+    /* my_block.flag_stgy = Nm1.flag_stgy; */
+    /* my_block.comm = Nm1.comm; */
+
+    /* double *test; */
+    /* test = (double *) calloc(N,sizeof(double)); */
+    /* // test[0] = 1; */
+
+    /* for (i1 = 0; i1 < N; ++i1) { */
+    /*   test[i1] = 1; */
+    /* } */
+    
+    /* stbmmProd(my_block,test); */
+    
+    /* stmm_core(&test,N,1,T_block,T_fft,blocksize,tpltzblocks[i0].lambda,V_fft,V_rfft,nfft,plan_f,plan_b,1,Nm1.flag_stgy.flag_nofft); */
+
+    /* stmm_main(&test,N,1,0,N,T_block,T_fft,tpltzblocks[i0].lambda,V_fft,V_rfft,plan_f,plan_b,blocksize,nfft,Nm1.flag_stgy); */
+    
+    /* MPI_Barrier(A->comm); */
+
+    /* printf("r: %i, my_block*test[0:5] = [%f,%f,%f,%f,%f]\n", rank,test[0],test[1],test[2],test[3],test[4]); */
+    /* fflush(stdout); */
+    
+    dsaupd_(&ID0, BMAT, &N, WHICH, &NEV, &TOL, RESID, &NCV, V, &LDV, IPARAM, IPNTR, WORKD, WORKL, &lworkl, &INFO);
+
+    
+    /* x = &(WORKD[IPNTR[0]-1]); */
+
+    for (i1 = 0; i1 < nti; ++i1) {
+      x[i1] = WORKD[IPNTR[0]-1+i1];
+    }
+    
+    while (ID0 == 1 || ID0 == -1) {
+
+      /* printf("r: %i, ID0 = %i\n", rank,ID0); */
+      /* fflush(stdout); */
+
+      /* stmm_core(&x,N,1,T_block,T_fft,blocksize,tpltzblocks[i0].lambda,V_fft,V_rfft,nfft,plan_f,plan_b,1,Nm1.flag_stgy.flag_nofft); */
+
+      tpltz_init(N, tpltzblocks[i0].lambda, &nfft, &blocksize, &T_fft, T_block, &V_fft, &V_rfft, &plan_f, &plan_b, Nm1.flag_stgy);
+
+      stmm_main(&x,N,1,0,N,T_block,T_fft,tpltzblocks[i0].lambda,V_fft,V_rfft,plan_f,plan_b,blocksize,nfft,Nm1.flag_stgy);
+      
+      /* stbmmProd(my_block,x); */
+      
+      for (i1 = 0; i1 < N; ++i1) {
+	if (IPNTR[1]-1+i1 >= 3*N) {
+	  printf("r: %i, PB ARRAY SIZE IPNTR[1]-1+i1=%i >= 3*N=%i\n", rank,IPNTR[1]-1+i1,3*N);
+	  fflush(stdout);
+	}
+	
+    	WORKD[IPNTR[1]-1+i1] = x[i1];
+	
+    	/* if (ID0 == 1) { */
+    	/*   WORKD[IPNTR[2]-1+i1] = WORKD[IPNTR[0]-1+i1]; */
+    	/* } */
+      }
+ 
+      dsaupd_(&ID0, BMAT, &N, WHICH, &NEV, &TOL, RESID, &NCV, V, &LDV, IPARAM, IPNTR, WORKD, WORKL, &lworkl, &INFO);
+      
+    }
+    
+    tpltz_cleanup(&T_fft,&V_fft,&V_rfft,&plan_f,&plan_b);
+    
+    if (INFO < 0) {
+      printf("PROBLEM dsaupd on r: %i, INFO = %i, ITER = %i\n", rank,INFO,IPARAM[8]);
+    }
+    else {
+      // printf("No problem with dsaupd on r: %i, INFO = %i, ITER = %i\n", rank,INFO,IPARAM[8]);
+
+      dseupd_(&RVEC, HOWMANY, SELECT, D, Z, &LDZ, &SIGMA, BMAT, &N, WHICH, &NEV, &TOL, RESID, &NCV, V, &LDV, IPARAM, IPNTR, WORKD, WORKL, &lworkl, &INFO);
+
+      if (INFO < 0) {
+	printf("PROBLEM dseupd on r: %i, INFO = %i\n", rank,INFO);
+      }
+      /* else { */
+      /* 	printf("No problem with dseupd on r: %i, INFO = %i\n", rank,INFO); */
+      /* } */
+      fflush(stdout);
+      
+    }
+    
+    fflush(stdout);
+        
+    
     
     for (i1=0; i1<nb_defl; ++i1) {
       
-      // ###### Get the fourier mode of order i0 and take it as an eigenvector of the block
-      get_Fourier_mode(in,out,nti,i0);
+      /* // ###### Get the fourier mode of order i0 and take it as an eigenvector of the block */
+      /* get_Fourier_mode(in,out,nti,i0); */
 
-      for (i3 = 0; i3 < nti; ++i3) {
-    	x[i3] = out[i3][0]; // Store the real part of the results of FFT in an array.
+      /* for (i3 = 0; i3 < nti; ++i3) { */
+      /* 	x[i3] = out[i3][0]; // Store the real part of the results of FFT in an array. */
+      /* } */
+
+      if (i1*nti >= NEV*N) {
+	printf("r: %i, PB SIZE ARRAY i1*nti = %i >= NEV*N = %i\n", rank,i1*nti,NEV*N);
+	fflush(stdout);
       }
       
-      // ###### Get the eigenvector through ARPACK
-      // get_ARPACK(...);
-      
-      // ###### Call of the function to do the local pointing : pointing of 1 block
-      Apply_ATr_bloc(A,x,y,n,row_indice,nti); // Compute P_i^\top * Fourier mode n°i1
+      // ###### Call of the function to do the local pointing : pointing of 1 block      
+      Apply_ATr_bloc(A,&(Z[i1*nti]),y,n,row_indice,nti); // Compute P_i^\top * Fourier mode n°i1
 
       // ###### Do the (A_i^T*A_i)^\dagger local product
       Apply_ATA_bloc(A,ATA,y,z,np);
       
       // ###### Store the resulting vector in coarse space array CS
       for (i4 = 0; i4 < n; ++i4) {
+	if (i0*nb_defl*n+i1*n+i4 >= n*nb_defl*nb_blocks_loc) {
+	  printf("r: %i, PB SIZE ARRAY i0*nb_defl*n+i1*n+i4 = %i >= n*nb_defl*nb_blocks_loc = %i\n", rank,i0*nb_defl*n+i1*n+i4,n*nb_defl*nb_blocks_loc);
+	  fflush(stdout);
+	}
     	CS[i0*nb_defl*n+i1*n+i4] = z[i4];
       }
       
     }
+
     
-    free(out);
-    free(in);
-    free(x);
-  
+    /* free(RESID);     */
+    /* free(V); */
+    /* free(WORKD); */
+    /* free(WORKL); */
+    /* free(SELECT); */
+    /* free(Z); */
+    /* free(T_block); */
+    /* free(D); */
+
+    /* free(out); */
+    /* free(in); */
+    // free(x);
+    /* free(xx); */
+    // free(ATA);
+    
     row_indice += nti;
+    
   }
-  
+    
   free(z);
   free(y);
   // free(x);
   // free(out);
   // free(in);
-  free(ATA);
+  /* free(ATA); */
 
   return 0;
 }
