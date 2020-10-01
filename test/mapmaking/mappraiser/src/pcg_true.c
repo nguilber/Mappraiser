@@ -107,6 +107,9 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
   int rest = rank%nb_task_per_node;
   
+  /* printf("r: %i, rest = %i\n", rank,rest); */
+  /* fflush(stdout); */
+
   if (rest == 0) {
 
     /* printf("r: %i, HERE\n", rank); */

@@ -118,7 +118,6 @@ int mpi_stbmm(double **V, int64_t nrow, int m, int m_rowwise, Block *tpltzblocks
   int right = rank+1;
   int left  = rank-1;
 
-
   //Define the indices for each process
   int idv0, idvn;  //indice of the first and the last block of V for each processes
 

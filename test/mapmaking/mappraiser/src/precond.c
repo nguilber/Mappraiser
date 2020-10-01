@@ -465,13 +465,6 @@ int Apply_ATA_bloc(Mat *A, double *ATA, double *y, double *z, int np)
 
   nnz = A->nnz;
   
-  int this = 5;  
-
-  if (nnz > this) {
-    printf("OK that's not normal : %i\n",nnz);
-    fflush(stdout);
-  }
-  
   tmp_blck = (double *) calloc(sizeof(double),nnz*nnz);
   tmp_vec = (double *) calloc(sizeof(double),nnz);
 
@@ -635,12 +628,9 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   y = (double *) calloc(n,sizeof(double));
   z = (double *) malloc(n*sizeof(double));
   /* getlocDiagN(A,Nm1,diagNm1); */
+  ATA = (double *)  calloc(np*nnz*nnz,sizeof(double));
     
   for (i0 = 0; i0 < nb_blocks_loc; ++i0) {
-
-    
-    /* printf("r: %i, HERE\n",rank); */
-    /* fflush(stdout); */
     
     nti = tpltzblocks[i0].n; // Size of the block
 
@@ -655,8 +645,12 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
     if (NCV < 50) {
       NCV = 50;
     }
-    
 
+    /* printf("r: %i, nti : %i, ncv : %i\n", rank, nti,NCV); */
+    /* fflush(stdout); */
+
+    /* printf("r: %i ------> HERE !!\n", rank); */
+    /* fflush(stdout); */
     
     RESID = (double *) malloc(sizeof(double)*nti);
     V = (double *) malloc(sizeof(double)*LDV*NCV);
@@ -677,11 +671,10 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
       fflush(stdout);
       
     }
-    
-    ATA = (double *)  calloc(np*nnz*nnz,sizeof(double));
 
     // ###### Build ATA w.r.t. the local block i0
     Build_ATA_bloc(A,Nm1,ATA,row_indice,nti,np,rank,i0);
+
     
     /* in = (fftw_complex *) calloc(nti,sizeof(fftw_complex)); */
     /* out = (fftw_complex *) calloc(nti,sizeof(fftw_complex)); */
@@ -738,15 +731,16 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
 
     /* printf("r: %i, my_block*test[0:5] = [%f,%f,%f,%f,%f]\n", rank,test[0],test[1],test[2],test[3],test[4]); */
     /* fflush(stdout); */
-    
-    dsaupd_(&ID0, BMAT, &N, WHICH, &NEV, &TOL, RESID, &NCV, V, &LDV, IPARAM, IPNTR, WORKD, WORKL, &lworkl, &INFO);
 
+    dsaupd_(&ID0, BMAT, &N, WHICH, &NEV, &TOL, RESID, &NCV, V, &LDV, IPARAM, IPNTR, WORKD, WORKL, &lworkl, &INFO);
     
     /* x = &(WORKD[IPNTR[0]-1]); */
 
     for (i1 = 0; i1 < nti; ++i1) {
       x[i1] = WORKD[IPNTR[0]-1+i1];
     }
+
+    tpltz_init(N, tpltzblocks[i0].lambda, &nfft, &blocksize, &T_fft, T_block, &V_fft, &V_rfft, &plan_f, &plan_b, Nm1.flag_stgy);
     
     while (ID0 == 1 || ID0 == -1) {
 
@@ -754,8 +748,6 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
       /* fflush(stdout); */
 
       /* stmm_core(&x,N,1,T_block,T_fft,blocksize,tpltzblocks[i0].lambda,V_fft,V_rfft,nfft,plan_f,plan_b,1,Nm1.flag_stgy.flag_nofft); */
-
-      tpltz_init(N, tpltzblocks[i0].lambda, &nfft, &blocksize, &T_fft, T_block, &V_fft, &V_rfft, &plan_f, &plan_b, Nm1.flag_stgy);
 
       stmm_main(&x,N,1,0,N,T_block,T_fft,tpltzblocks[i0].lambda,V_fft,V_rfft,plan_f,plan_b,blocksize,nfft,Nm1.flag_stgy);
       
@@ -778,6 +770,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
       
     }
     
+    
     tpltz_cleanup(&T_fft,&V_fft,&V_rfft,&plan_f,&plan_b);
     
     if (INFO < 0) {
@@ -799,8 +792,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
     }
     
     fflush(stdout);
-        
-    
+
     
     for (i1=0; i1<nb_defl; ++i1) {
       
@@ -817,7 +809,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
       }
       
       // ###### Call of the function to do the local pointing : pointing of 1 block      
-      Apply_ATr_bloc(A,&(Z[i1*nti]),y,n,row_indice,nti); // Compute P_i^\top * Fourier mode n°i1
+      Apply_ATr_bloc(A,&(Z[i1*nti]),y,n,row_indice,nti); // Compute P_i^\top * eigenvector i1
 
       // ###### Do the (A_i^T*A_i)^\dagger local product
       Apply_ATA_bloc(A,ATA,y,z,np);
@@ -834,7 +826,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
     }
 
     
-    /* free(RESID);     */
+    /* free(RESID); */
     /* free(V); */
     /* free(WORKD); */
     /* free(WORKL); */
@@ -845,11 +837,13 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
 
     /* free(out); */
     /* free(in); */
-    // free(x);
+    free(x);
     /* free(xx); */
     // free(ATA);
     
     row_indice += nti;
+
+    ID0 = 0;
     
   }
     
@@ -1261,9 +1255,6 @@ double * Communicate_CS(double *Z, int new_size, int *tot_size_CS, MPI_Comm comm
   /* MPI_Barrier(comm); */
   
   MPI_Allgatherv(Z,new_size*nb_rows,MPI_DOUBLE,CS,recvcount,location,MPI_DOUBLE,comm);
-
-  /* printf("r: %i ------> HERE !!\n", rank); */
-  /* fflush(stdout); */
   
   /* int i; */
   /* if (rank == 0) { */

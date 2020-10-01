@@ -266,7 +266,6 @@ int tpltz_init(int n, int lambda, int *nfft, int *blocksize, fftw_complex **T_ff
   //initialize block size
   *blocksize = define_blocksize(n, lambda, flag_stgy.flag_bs, flag_stgy.fixed_bs);
 
-
   //if (bs==0)
 //     flag_stgy.flag_bs = 9999 //swich to noslidingwindowsalgo
 
@@ -394,8 +393,10 @@ int circ_init_fftw(double *T, int fft_size, int lambda, fftw_complex **T_fft)
   //routine variable
   int i;
   int circ_fftw_flag = FFTW_ESTIMATE;
+  
   //allocation for T_fft
   *T_fft = (fftw_complex*) fftw_malloc( (fft_size/2+1) * sizeof(fftw_complex) );
+  
   if (*T_fft==0)
     return print_error_message (2, __FILE__, __LINE__);
   double *T_circ = (double*) (*T_fft);
@@ -685,6 +686,11 @@ int stmm_core(double **V, int n, int m, double *T, fftw_complex *T_fft, int bloc
   // if(PRINT_RANK==0 && VERBOSE>0)
   //   printf("nbloc=%d, n=%d, m=%d, blocksize=%d, blocksize_eff=%d\n", nbloc, n, m, blocksize, blocksize_eff);
 
+  if (blocksize == 0 || m == 0) {
+    printf("THERE : blocksize = %i, m = %i\n", blocksize,m);
+    fflush(stdout);
+  }
+  
   double *V_bloc, *TV_bloc;
   V_bloc  = (double *) calloc(blocksize*m, sizeof(double));
   TV_bloc = (double *) calloc(blocksize*m, sizeof(double));
