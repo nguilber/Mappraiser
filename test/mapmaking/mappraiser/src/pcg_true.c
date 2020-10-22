@@ -473,7 +473,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   }
   fflush(stdout);
 
-  /* double **arg1 = (double **) malloc(sizeof(double *)); */
+  double **arg1 = (double **) malloc(sizeof(double *));
   if (rank == 0) {
     *arg1 = Z3;
     
@@ -500,7 +500,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   int nb_col_Q = new_size;
   
   if (rank == 0) {
-    Z4 = *arg1;
+    Z4 = Z3; // *arg1;
 
     Z5 = (double *)  malloc(sizeof(double)*n_gather[0]*nb_col_Q);
 
@@ -520,6 +520,9 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 	}	
       }
 
+      printf("proc 0 sending n_gather[i0]*nb_col_Q = %i * %i to proc %i\n", n_gather[i0],nb_col_Q,i0);
+      fflush(stdout);
+
       MPI_Send(Z6,n_gather[i0]*nb_col_Q,MPI_DOUBLE,i0,0,comm);
       
       free(Z6);
@@ -530,6 +533,9 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
     MPI_Recv(Z5,n*nb_col_Q,MPI_DOUBLE,0,0,comm,MPI_STATUS_IGNORE);
   }
+
+  printf("process n°%i is waiting\n", rank);
+  fflush(stdout);
 
   MPI_Barrier(comm);
   if (rank == 0) {
