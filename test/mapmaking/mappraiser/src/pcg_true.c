@@ -105,7 +105,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   double tol_svd;
   double *Z3;
 
-  int rest = rank%nb_task_per_node;
+  int rest = 0 ; // rank%nb_task_per_node;
   
   /* printf("r: %i, rest = %i\n", rank,rest); */
   /* fflush(stdout); */
@@ -473,31 +473,32 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   }
   fflush(stdout);
 
-  double **arg1 = (double **) malloc(sizeof(double *));
-  if (rank == 0) {
-    *arg1 = Z3;
-    
-    // Orthogonalize the coarse space Z on a proc
-    new_size = Orthogonalize_Space_loc(arg1,dim_CS,tot_size_CS,tol_svd,rank);
+  /* double **arg1 = (double **) malloc(sizeof(double *)); */
 
-    printf("r: %i : Nb of vec in CS before sending to everyone : %i\n", rank, new_size);
-
-    if (Z3 != NULL) {
-      free(Z3);
-    }
-    else {
-      printf("Z3 NULL\n");
-    }
+  /* if (rank == 0) { */
+  /*   *arg1 = Z3; */
     
-  }
-  fflush(stdout);
+  /*   // Orthogonalize the coarse space Z on a proc */
+  /*   new_size = Orthogonalize_Space_loc(arg1,dim_CS,tot_size_CS,tol_svd,rank); */
+
+  /*   printf("r: %i : Nb of vec in CS before sending to everyone : %i\n", rank, new_size); */
+
+  /*   if (Z3 != NULL) { */
+  /*     free(Z3); */
+  /*   } */
+  /*   else { */
+  /*     printf("Z3 NULL\n"); */
+  /*   } */
+    
+  /* } */
+  /* fflush(stdout); */
   
-  MPI_Bcast(&new_size,1,MPI_INT,0,comm);
+  /* MPI_Bcast(&new_size,1,MPI_INT,0,comm); */
 
   double *Z5;
   double *Z6;
 
-  int nb_col_Q = new_size;
+  int nb_col_Q = tot_size_CS; // new_size;
   
   if (rank == 0) {
     Z4 = Z3; // *arg1;
