@@ -257,6 +257,155 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   free(gather_lindices);
   free(invert_gather_lindices);
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+  int *position, *count;
+  position = (int *) calloc(nb_proc,sizeof(int));
+  count = (int *) malloc(sizeof(int)*nb_proc);
+  
+  /* position[0] = 0; */
+  
+  MPI_Allgather(&new_size,1,MPI_INT,count,1,MPI_INT,comm);
+  
+  int tot_size_CS2 = 0;
+  
+  for (i0 = 0; i0 < nb_proc; ++i0) {
+    tot_size_CS2 += count[i0];
+    count[i0] *= dim_CS;
+  }
+
+  for (i0 = 1; i0 < nb_proc; ++i0) {
+    position[i0] = position[i0-1] + count[i0-1];
+  }
+
+  /* if (rank == 0) { */
+    
+  /*   printf("count[i0] = "); */
+  /*   for (i0 = 0; i0 < nb_proc; ++i0) { */
+  /*     printf(" %i,", count[i0]); */
+  /*   } */
+  /*   printf("\n"); */
+  /*   fflush(stdout); */
+
+  /*   printf("posision[i0] = "); */
+  /*   for (i0 = 0; i0 < nb_proc; ++i0) { */
+  /*     printf(" %i,", position[i0]); */
+  /*   } */
+  /*   printf("\n"); */
+  /*   fflush(stdout); */
+    
+  /* } */
+  
+    
+  if (rest == 0) {
+    double *Z3;
+
+    Z3 = (double *) calloc(dim_CS*new_size,sizeof(double));
+
+    for (i0 = 0; i0 < new_size; ++i0) {
+      for (i1 = 0; i1 < n; ++i1) {
+	if (i1 >= n) {
+	  printf("r: %i, FUCK i1 step out of bij : i1 = %i, bij limit = %i\n", rank,i1,n);
+	  fflush(stdout);
+	}
+
+	if (i0 >= new_size) {
+	  printf("r: %i, FUCK i0 step out of Z3 and Z2 : i0 = %i, Z limit = %i\n", rank,i0,new_size);
+	  fflush(stdout);
+	}
+
+	if (bij[i1] >= dim_CS) {
+	  printf("r: %i, FUCK bij[i1] step out of Z3 : bij[i1] = %i, Z limit = %i\n", rank,i1,dim_CS);
+	  fflush(stdout);
+	}
+	
+	Z3[dim_CS*i0+bij[i1]] = Z2[n*i0+i1];
+      }
+    }
+  
+    double *Z4;
+    Z4 = (double *) malloc(sizeof(double)*dim_CS*tot_size_CS2);
+
+    /* printf("r: %i, FUCK problem with the Allgather de Z3 : (count[nb_proc-1]=%i)+(position[nb_proc-1]=%i) = %i,  dim_CS*tot_size_CS2 = %i\n", rank,count[nb_proc-1],position[nb_proc-1],count[nb_proc-1]+position[nb_proc-1],dim_CS*tot_size_CS2); */
+    /* fflush(stdout); */
+    
+    if (count[nb_proc-1]+position[nb_proc-1] > dim_CS*tot_size_CS2) {
+      printf("r: %i, FUCK problem with the Allgather de Z3 : count[nb_proc-1]+position[nb_proc-1] = %i,  dim_CS*tot_size_CS2 = %i\n", rank,count[nb_proc-1]+position[nb_proc-1],dim_CS*tot_size_CS2);
+      fflush(stdout);
+    }
+
+
+    MPI_Barrier(comm);
+    MPI_Allgatherv(Z3,dim_CS*new_size,MPI_DOUBLE,Z4,count,position,MPI_DOUBLE,comm);
+
+    free(Z3);
+    
+    double *Z5;
+    Z5 = (double *) malloc(sizeof(double)*n*tot_size_CS2);
+
+    for (i0 = 0; i0 < tot_size_CS2; ++i0) {
+      for (i1 = 0; i1 < n; ++i1) {
+	if (i1 >= n) {
+	  printf("r: %i, FUCK i1 step out of bij : i1 = %i, bij limit = %i\n", rank,i1,n);
+	  fflush(stdout);
+	}
+
+	if (i0 >= tot_size_CS2) {
+	  printf("r: %i, FUCK i0 step out of Z4 and Z5 : i0 = %i, Z limit = %i\n", rank,i0,tot_size_CS2);
+	  fflush(stdout);
+	}
+	
+	Z5[n*i0+i1] = Z4[dim_CS*i1+bij[i0]];
+      }
+    }
+
+    free(Z4);
+    
+
+  }
+
+  MPI_Barrier(comm);
+  printf("r: %i, did we reach here ?\n", rank);
+  fflush(stdout);    
+
+  
+  
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+
+
+  
+
   int *n_gather;
   if (rank == 0) {
     n_gather = (int *) malloc(sizeof(int)*nb_proc);

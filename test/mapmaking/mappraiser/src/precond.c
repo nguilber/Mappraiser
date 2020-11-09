@@ -379,7 +379,7 @@ int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, 
   	info = LAPACKE_dpotrf(LAPACK_ROW_MAJOR,'L',nnz,tmp_blck,nnz);
 	
   	if (info > 0) {
-  	  printf("The leading minor of order %i is not positive-definite, and the factorization could not be completed.",info);
+  	  // printf("The leading minor of order %i is not positive-definite, and the factorization could not be completed.",info);
   	  ATA[i3*nnz*nnz] = -1;
   	}
   	if (info < 0) {
