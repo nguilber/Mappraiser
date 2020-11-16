@@ -112,15 +112,15 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
   if (rest == 0) {
 
-    printf("r: %i, HERE\n", rank);
-    fflush(stdout);
+    /* printf("r: %i, HERE\n", rank); */
+    /* fflush(stdout); */
     
     if (rank == 0) {
       printf("######## Start building ALS ##############\n");
     }
     /* MPI_Barrier(comm); */
     fflush(stdout);
-    int nb_defl = 2; // To give as argument of PCG_GLS_true later on
+    int nb_defl = 10; // To give as argument of PCG_GLS_true later on
     int nb_blocks_loc;
     nb_blocks_loc = Nm1.nb_blocks_loc;
     
@@ -276,9 +276,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
 
 
-
   
-
   int *position, *count;
   position = (int *) calloc(nb_proc,sizeof(int));
   count = (int *) malloc(sizeof(int)*nb_proc);
@@ -286,17 +284,36 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   /* position[0] = 0; */
   
   MPI_Allgather(&new_size,1,MPI_INT,count,1,MPI_INT,comm);
+  MPI_Barrier(comm);
   
   int tot_size_CS = 0;
+
+  
+  printf("r: %i, count = [", rank);
   
   for (i0 = 0; i0 < nb_proc; ++i0) {
+    
     tot_size_CS += count[i0];
     count[i0] *= dim_CS;
+    
+    printf("%i, ", count[i0]);
+    
   }
 
+  printf("]\n");
+
+  printf("r: %i, position = [", rank);
+  
   for (i0 = 1; i0 < nb_proc; ++i0) {
+
     position[i0] = position[i0-1] + count[i0-1];
+
+    printf(" %i,", position[i0]);
+    
   }
+
+  printf("]\n");
+  fflush(stdout);
 
   /* if (rank == 0) { */
     
@@ -316,7 +333,9 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     
   /* } */
   
-    
+  double *Z4;
+  double *Z5;
+  
   if (rest == 0) {
     double *Z3;
 
@@ -343,11 +362,10 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
       }
     }
   
-    double *Z4;
     Z4 = (double *) malloc(sizeof(double)*dim_CS*tot_size_CS);
 
-    /* printf("r: %i, FUCK problem with the Allgather de Z3 : (count[nb_proc-1]=%i)+(position[nb_proc-1]=%i) = %i,  dim_CS*tot_size_CS = %i\n", rank,count[nb_proc-1],position[nb_proc-1],count[nb_proc-1]+position[nb_proc-1],dim_CS*tot_size_CS); */
-    /* fflush(stdout); */
+    printf("r: %i, FUCK problem with the Allgather de Z3 : (count[nb_proc-1]=%i)+(position[nb_proc-1]=%i) = %i,  dim_CS*tot_size_CS = %i\n", rank,count[nb_proc-1],position[nb_proc-1],count[nb_proc-1]+position[nb_proc-1],dim_CS*tot_size_CS);
+    fflush(stdout);
     
     if (count[nb_proc-1]+position[nb_proc-1] > dim_CS*tot_size_CS) {
       printf("r: %i, FUCK problem with the Allgather de Z3 : count[nb_proc-1]+position[nb_proc-1] = %i,  dim_CS*tot_size_CS = %i\n", rank,count[nb_proc-1]+position[nb_proc-1],dim_CS*tot_size_CS);
@@ -355,12 +373,26 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     }
 
 
+
     MPI_Barrier(comm);
     MPI_Allgatherv(Z3,dim_CS*new_size,MPI_DOUBLE,Z4,count,position,MPI_DOUBLE,comm);
 
+    MPI_Barrier(comm);
+    printf("r: %i, did we reach here ?\n", rank);
+    fflush(stdout);
+    
+    *arg1 = Z4;
+
+    new_size = Orthogonalize_Space_loc(arg1,dim_CS,tot_size_CS,tol_svd,rank);
+
+    free(Z4);
+
+    Z4 = *arg1;
+
+    tot_size_CS = new_size;
+
     free(Z3);
     
-    double *Z5;
     Z5 = (double *) malloc(sizeof(double)*n*tot_size_CS);
 
     for (i0 = 0; i0 < tot_size_CS; ++i0) {
@@ -375,15 +407,19 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 	  fflush(stdout);
 	}
 	
-	Z5[n*i0+i1] = Z4[dim_CS*i1+bij[i0]];
+	Z5[n*i0+i1] = Z4[dim_CS*i0+bij[i1]];
       }
     }
-
+    
     free(Z4);
     
 
   }
 
+  if (rank == 0) {
+    printf("The complete CS Z4 is dim_CS = %i rows by tot_size_CS = %i cols\n",dim_CS,tot_size_CS);
+    fflush(stdout);
+  }
   
   
 
@@ -421,7 +457,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   double *pz = (double *) malloc(m*sizeof(double));
   double *pTnpz = (double *) malloc(n*sizeof(double));
   
-  double *Z7 = (double *) calloc(dim_CS*nb_col_Q,sizeof(double));
+  double *Z7 = (double *) calloc(n*nb_col_Q,sizeof(double));
 
   /* double norm; */
   
@@ -434,7 +470,8 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     /* norm = 0; */
 
     for (i1 = 0; i1 < n; ++i1) {
-      Z7[i0*dim_CS+bij[i1]] = pTnpz[i1]; // divide by the number of proc that watch pixel i1 ? No, apparently
+      Z7[i0*n+i1] = pTnpz[i1];
+      // Z7[i0*dim_CS+bij[i1]] = pTnpz[i1]; // divide by the number of proc that watch pixel i1 ? No, apparently
       // norm += pTnpz[i1];
     }
 
@@ -447,10 +484,6 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     printf("We are done applying the operator to the CS\n");
   }
   fflush(stdout);
-
-  MPI_Barrier(comm);
-  printf("r: %i, did we reach here ?\n", rank);
-  fflush(stdout);    
 
 
 
@@ -465,7 +498,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
   
 
-  cblas_dgemm(CblasColMajor,CblasTrans,CblasNoTrans,nb_col_Q,nb_col_Q,dim_CS,1,Z7,dim_CS,Z7,nb_col_Q,0,E_loc,nb_col_Q);
+  cblas_dgemm(CblasColMajor,CblasTrans,CblasNoTrans,nb_col_Q,nb_col_Q,n,1,Z5,n,Z7,n,0,E_loc,nb_col_Q);
 
   MPI_Allreduce(E_loc, E, nb_col_Q*nb_col_Q, MPI_DOUBLE, MPI_SUM, comm);
 
