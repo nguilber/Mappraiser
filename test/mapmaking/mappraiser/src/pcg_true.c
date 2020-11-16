@@ -120,7 +120,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     }
     /* MPI_Barrier(comm); */
     fflush(stdout);
-    int nb_defl = 10; // To give as argument of PCG_GLS_true later on
+    int nb_defl = 2; // To give as argument of PCG_GLS_true later on
     int nb_blocks_loc;
     nb_blocks_loc = Nm1.nb_blocks_loc;
     
@@ -289,31 +289,31 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   int tot_size_CS = 0;
 
   
-  printf("r: %i, count = [", rank);
+  /* printf("r: %i, count = [", rank); */
   
   for (i0 = 0; i0 < nb_proc; ++i0) {
     
     tot_size_CS += count[i0];
     count[i0] *= dim_CS;
     
-    printf("%i, ", count[i0]);
+    /* printf("%i, ", count[i0]); */
     
   }
 
-  printf("]\n");
+  /* printf("]\n"); */
 
-  printf("r: %i, position = [", rank);
+  /* printf("r: %i, position = [", rank); */
   
   for (i0 = 1; i0 < nb_proc; ++i0) {
 
     position[i0] = position[i0-1] + count[i0-1];
 
-    printf(" %i,", position[i0]);
+    /* printf(" %i,", position[i0]); */
     
   }
 
-  printf("]\n");
-  fflush(stdout);
+  /* printf("]\n"); */
+  /* fflush(stdout); */
 
   /* if (rank == 0) { */
     
@@ -364,8 +364,8 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   
     Z4 = (double *) malloc(sizeof(double)*dim_CS*tot_size_CS);
 
-    printf("r: %i, FUCK problem with the Allgather de Z3 : (count[nb_proc-1]=%i)+(position[nb_proc-1]=%i) = %i,  dim_CS*tot_size_CS = %i\n", rank,count[nb_proc-1],position[nb_proc-1],count[nb_proc-1]+position[nb_proc-1],dim_CS*tot_size_CS);
-    fflush(stdout);
+    /* printf("r: %i, FUCK problem with the Allgather de Z3 : (count[nb_proc-1]=%i)+(position[nb_proc-1]=%i) = %i,  dim_CS*tot_size_CS = %i\n", rank,count[nb_proc-1],position[nb_proc-1],count[nb_proc-1]+position[nb_proc-1],dim_CS*tot_size_CS); */
+    /* fflush(stdout); */
     
     if (count[nb_proc-1]+position[nb_proc-1] > dim_CS*tot_size_CS) {
       printf("r: %i, FUCK problem with the Allgather de Z3 : count[nb_proc-1]+position[nb_proc-1] = %i,  dim_CS*tot_size_CS = %i\n", rank,count[nb_proc-1]+position[nb_proc-1],dim_CS*tot_size_CS);
@@ -376,10 +376,6 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
     MPI_Barrier(comm);
     MPI_Allgatherv(Z3,dim_CS*new_size,MPI_DOUBLE,Z4,count,position,MPI_DOUBLE,comm);
-
-    MPI_Barrier(comm);
-    printf("r: %i, did we reach here ?\n", rank);
-    fflush(stdout);
     
     *arg1 = Z4;
 
@@ -452,7 +448,8 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   /*   } */
   /* } */
 
-  int nb_col_Q = tot_size_CS;  
+  int nb_col_Q = tot_size_CS;
+  int row_indice = 0;
   
   double *pz = (double *) malloc(m*sizeof(double));
   double *pTnpz = (double *) malloc(n*sizeof(double));
@@ -465,14 +462,55 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     MatVecProd(A,&(Z5[i0*n]),pz,0);
 
     stbmmProd(Nm1,pz);
+
     TrMatVecProd(A,pz,pTnpz,0);
+
+/* // Apply the product A_i.T * v for a timestream of one block */
+/* int Apply_ATr_bloc(Mat *A, double *x, double *y, int size_y, int row_indice, int nb_rows) */
+/* { */
+/*   int i0,i1;           // Some loop index */
+/*   int nnz; */
+
+/*   nnz = A->nnz;   */
+/*   for (i0 = 0; i0 < nb_rows; ++i0) { */
+    
+/*     int pix_index; */
+/*     pix_index = A->indices[(row_indice+i0)*nnz]/nnz; */
+    
+/*     for(i1 = 0; i1 < nnz; ++i1){ */
+      
+/*       // if there are trashed pixels and that we watch a pixel, we need to shift indices by 1 due to presence of fictitious pixel at index 0 */
+/*       if (A->trash_pix == 1) { */
+/*   	if (pix_index =! 0) { */
+/*   	  // printf("%i \n",A->indices[(row_indice+i0)*nnz+i1]-nnz < size_y); */
+/*   	  y[A->indices[(row_indice+i0)*nnz+i1]-nnz] += (A->values[(row_indice+i0)*nnz+i1]) * x[i0];//  */
+/*   	} */
+/*       } */
+/*       else{ */
+/* 	// printf("%i \n",A->indices[(row_indice+i0)*nnz+i1] < size_y); */
+/*   	y[A->indices[(row_indice+i0)*nnz+i1]] += (A->values[(row_indice+i0)*nnz+i1]) * x[i0]; //  */
+/*       } */
+/*     } */
+/*   } */
+  
+/*   return 0; */
+/* } */
+
+    /* for (i1 = 0; i1 < Nm1.nb_blocks_loc; ++i1) { */
+
+    /*   Apply_ATr_bloc(A,pz,pTnpz,n,row_indice,Nm1.tpltzblocks[i1].n); */
+
+    /*   row_indice += Nm1.tpltzblocks[i1].n; */
+      
+      
+    /* } */
     
     /* norm = 0; */
 
-    for (i1 = 0; i1 < n; ++i1) {
-      Z7[i0*n+i1] = pTnpz[i1];
-      // Z7[i0*dim_CS+bij[i1]] = pTnpz[i1]; // divide by the number of proc that watch pixel i1 ? No, apparently
-      // norm += pTnpz[i1];
+    for (i2 = 0; i2 < n; ++i2) {
+      Z7[i0*n+i2] = pTnpz[i2];
+      // Z7[i0*dim_CS+bij[i2]] = pTnpz[i2]; // divide by the number of proc that watch pixel i2 ? No, apparently
+      // norm += pTnpz[i2];
     }
 
     /* printf("r: %i, norm = %f\n", rank,sqrt(norm)); */
