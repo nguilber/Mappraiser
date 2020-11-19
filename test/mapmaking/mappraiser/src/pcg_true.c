@@ -343,22 +343,22 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
     for (i0 = 0; i0 < new_size; ++i0) {
       for (i1 = 0; i1 < n; ++i1) {
-	if (i1 >= n) {
-	  printf("r: %i, FUCK i1 step out of bij : i1 = %i, bij limit = %i\n", rank,i1,n);
-	  fflush(stdout);
-	}
+  	if (i1 >= n) {
+  	  printf("r: %i, FUCK i1 step out of bij : i1 = %i, bij limit = %i\n", rank,i1,n);
+  	  fflush(stdout);
+  	}
 
-	if (i0 >= new_size) {
-	  printf("r: %i, FUCK i0 step out of Z3 and Z2 : i0 = %i, Z limit = %i\n", rank,i0,new_size);
-	  fflush(stdout);
-	}
+  	if (i0 >= new_size) {
+  	  printf("r: %i, FUCK i0 step out of Z3 and Z2 : i0 = %i, Z limit = %i\n", rank,i0,new_size);
+  	  fflush(stdout);
+  	}
 
-	if (bij[i1] >= dim_CS) {
-	  printf("r: %i, FUCK bij[i1] step out of Z3 : bij[i1] = %i, Z limit = %i\n", rank,i1,dim_CS);
-	  fflush(stdout);
-	}
+  	if (bij[i1] >= dim_CS) {
+  	  printf("r: %i, FUCK bij[i1] step out of Z3 : bij[i1] = %i, Z limit = %i\n", rank,i1,dim_CS);
+  	  fflush(stdout);
+  	}
 	
-	Z3[dim_CS*i0+bij[i1]] = Z2[n*i0+i1];
+  	Z3[dim_CS*i0+bij[i1]] = Z2[n*i0+i1];
       }
     }
   
@@ -376,7 +376,11 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
     MPI_Barrier(comm);
     MPI_Allgatherv(Z3,dim_CS*new_size,MPI_DOUBLE,Z4,count,position,MPI_DOUBLE,comm);
-    
+
+    MPI_Barrier(comm);
+    printf("r: %i, did we reach here ?\n", rank);
+    fflush(stdout);
+
     *arg1 = Z4;
 
     new_size = Orthogonalize_Space_loc(arg1,dim_CS,tot_size_CS,tol_svd,rank);
@@ -393,17 +397,17 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
     for (i0 = 0; i0 < tot_size_CS; ++i0) {
       for (i1 = 0; i1 < n; ++i1) {
-	if (i1 >= n) {
-	  printf("r: %i, FUCK i1 step out of bij : i1 = %i, bij limit = %i\n", rank,i1,n);
-	  fflush(stdout);
-	}
+  	if (i1 >= n) {
+  	  printf("r: %i, FUCK i1 step out of bij : i1 = %i, bij limit = %i\n", rank,i1,n);
+  	  fflush(stdout);
+  	}
 
-	if (i0 >= tot_size_CS) {
-	  printf("r: %i, FUCK i0 step out of Z4 and Z5 : i0 = %i, Z limit = %i\n", rank,i0,tot_size_CS);
-	  fflush(stdout);
-	}
+  	if (i0 >= tot_size_CS) {
+  	  printf("r: %i, FUCK i0 step out of Z4 and Z5 : i0 = %i, Z limit = %i\n", rank,i0,tot_size_CS);
+  	  fflush(stdout);
+  	}
 	
-	Z5[n*i0+i1] = Z4[dim_CS*i0+bij[i1]];
+  	Z5[n*i0+i1] = Z4[dim_CS*i0+bij[i1]];
       }
     }
     
@@ -411,7 +415,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     
 
   }
-
+    
   if (rank == 0) {
     printf("The complete CS Z4 is dim_CS = %i rows by tot_size_CS = %i cols\n",dim_CS,tot_size_CS);
     fflush(stdout);
@@ -450,6 +454,9 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
   int nb_col_Q = tot_size_CS;
   int row_indice = 0;
+
+  /* double *Z5; */
+  /* Z5 = Z2; */
   
   double *pz = (double *) malloc(m*sizeof(double));
   double *pTnpz = (double *) malloc(n*sizeof(double));
@@ -546,7 +553,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   
   // ###### Call LAPACK routines to compute Cholesky factorisation of E
   info = LAPACKE_dpotrf(LAPACK_ROW_MAJOR,'L',nb_col_Q,E,nb_col_Q);
-    
+  
   if (info > 0) {
     printf("The leading minor of order %i is not positive-definite, and the factorization could not be completed.",info);
     fflush(stdout);
@@ -556,6 +563,9 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     fflush(stdout);
   }  
 
+  /* MPI_Barrier(comm); */
+  /* printf("r: %i, did we reach here ?\n", rank); */
+  /* fflush(stdout); */
 
 
 
