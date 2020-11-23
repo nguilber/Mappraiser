@@ -377,10 +377,6 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     MPI_Barrier(comm);
     MPI_Allgatherv(Z3,dim_CS*new_size,MPI_DOUBLE,Z4,count,position,MPI_DOUBLE,comm);
 
-    MPI_Barrier(comm);
-    printf("r: %i, did we reach here ?\n", rank);
-    fflush(stdout);
-
     *arg1 = Z4;
 
     new_size = Orthogonalize_Space_loc(arg1,dim_CS,tot_size_CS,tol_svd,rank);
