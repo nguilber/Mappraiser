@@ -562,7 +562,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   a_int N;
   a_int NEV = nb_defl;
   char *BMAT = "I";
-  char *WHICH = "SM";
+  char *WHICH = "LM";
   double TOL = 1e-3;
   double *RESID;
   a_int NCV;
@@ -570,7 +570,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   a_int LDV;
   a_int *IPARAM = (a_int *) calloc(11,sizeof(a_int));
   a_int ISHIFT = 1;
-  a_int maxiter_arnoldi = 1000;
+  a_int maxiter_arnoldi = 5000;
   a_int NB = 1;
   a_int MODE = 1;
   IPARAM[0] = ISHIFT;
@@ -601,12 +601,84 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
 /*             double *workl, int *lworkl, int *ierr); */
 
   a_int RVEC = 1;
-  char *HOWMANY = "A";
+  char *HOWMANY = "S";
   a_int *SELECT;
-  double *D = (double *) malloc(sizeof(double)*NEV);
+  double *D = (double *) calloc(NEV,sizeof(double));
   double *Z;
   a_int LDZ;
   double SIGMA;
+  
+  /* a_int id0 = 0; */
+  /* a_int n; */
+  /* a_int nev = nb_defl; */
+  /* char *bmat = "I"; */
+  /* char *which = "LM"; */
+  /* double tol = 1e-3; */
+  /* double *resid; */
+  /* a_int ncv; */
+  /* double *v; */
+  /* a_int ldv; */
+  /* a_int *iparam = (a_int *) calloc(11,sizeof(a_int)); */
+  /* a_int ishift = 1; */
+  /* a_int maxiter_arnoldi = 5000; */
+  /* a_int nb = 1; */
+  /* a_int mode = 1; */
+  /* iparam[0] = ishift; */
+  /* iparam[2] = maxiter_arnoldi; */
+  /* iparam[3] = nb; */
+  /* iparam[6] = mode; */
+  /* a_int *iptnr = (a_int *) malloc(sizeof(a_int)*11); */
+  /* double *workd; */
+  /* double *workl; */
+  /* // a_int lworkl; */
+  /* a_int info = 0; */
+
+  
+  /* a_int RVEC = 1; */
+  /* char *HOWMANY = "S"; */
+  /* a_int *SELECT; */
+  /* double *D = (double *) calloc(NEV,sizeof(double)); */
+  /* double *Z; */
+  /* a_int LDZ; */
+  /* double SIGMA; */
+  
+  /* int n = 10; */
+  /* double *d = (double *) malloc(sizeof(double)*n); */
+  /* d[0] = -0.38648221327081933; */
+  /* d[1] = -1.2227803990052377; */
+  /* d[2] = -1.2615931302618093; */
+  /* d[3] = 0.7258993200325536; */
+  /* d[4] = -1.2568521744501238; */
+  /* d[5] = -0.2496155082646955; */
+  /* d[6] = -1.2607488841814642; */
+  /* d[7] = 0.0; */
+  /* d[8] = 0.0; */
+  /* d[9] = 0.0; */
+
+  /* double *T_mat = (double *) malloc(sizeof(double)*n); */
+
+  /* for (i0 = 0; i0 < n; ++i0) { */
+  /*   for (i1 = 0; i1 < n; ++i1) { */
+  /*     T_mat[i0*n+i1] = d[abs(i0-i1)]; */
+  /*   } */
+  /* } */
+
+  /* printf("T_mat = \n"); */
+  /* for (i0 = 0; i0 < n; ++i0) { */
+  /*   for (i1 = 0; i1 < n; ++i1) { */
+  /*     printf("%f ", T_mat[i0*n+i1]); */
+  /*   } */
+  /*   printf("\n"); */
+  /* } */
+  /* fflush(stdout); */
+
+  
+  /* dsaupd_(&ID0, BMAT, &n, WHICH, &NEV, &TOL, RESID, &NCV, V, &LDV, iparam, IPNTR, WORKD, WORKL, &lworkl, &INFO); */
+
+
+
+
+  
 
   int vblock_size;
   int blocksize;
@@ -616,6 +688,20 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   fftw_plan plan_f;
   fftw_plan plan_b;
   int nfft;
+
+
+  double *xx;
+  int RCI_request;
+  int *ipar;
+  ipar = (int *) malloc(sizeof(int)*128);
+  double *dpar;
+  dpar = (double *) malloc(sizeof(double)*128);
+  double *tmp;
+  double *tmp2;
+  double stopping_criterion = 0;
+  double norm_b = 0;
+  int CONVERGED = 0;
+  double tol_cg = 1e-2;
   
 
   
@@ -642,8 +728,8 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
     else {
       NCV = N;
     }
-    if (NCV < 50) {
-      NCV = 50;
+    if (NCV < 300) {
+      NCV = 300;
     }
 
     /* printf("r: %i, nti : %i, ncv : %i\n", rank, nti,NCV); */
@@ -658,18 +744,25 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
     lworkl = NCV*(NCV+8);
     WORKL = (double *) malloc(sizeof(double)*lworkl);
 
-    SELECT = (a_int *) malloc(sizeof(a_int)*NCV);
+    SELECT = (a_int *) calloc(NCV,sizeof(a_int));
+    /* for (i1 = 0; i1 < NCV; ++i1) { */
+    /*   SELECT[i1] = 1; */
+    /* } */
+
     Z = (double *) malloc(sizeof(double)*N*NEV);
     LDZ = N;
     
     x = (double *) malloc(nti*sizeof(double));
-    /* xx = (double *) malloc(nti*sizeof(double)); */
+
+    xx = (double *) calloc(nti,sizeof(double));
+    tmp = (double *) malloc(sizeof(double)*nti*4);
+    tmp2 = (double *) malloc(sizeof(double)*nti);
+
 
     if (RESID == NULL || V == NULL || WORKD == NULL || WORKL == NULL || SELECT == NULL || Z == NULL || x == NULL) {
       printf("r: %i, allocation went south :\n", rank);
       printf("RESID == %i || V == %i || WORKD == %i || WORKL == %i || SELECT == %i || Z == %i || x == %i\n", (int) RESID, (int) V, (int) WORKD, (int) WORKL, (int) SELECT, (int) Z, (int) x);
       fflush(stdout);
-      
     }
 
     // ###### Build ATA w.r.t. the local block i0
@@ -689,6 +782,21 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
       T_block[i1] = tpltzblocks[i0].T_block[i1]/d;
       // T_block[i1] = 0;
     }
+
+    /* int *some_int = (int *) malloc(sizeof(int)*10); */
+
+    /* for (i1 = 0; i1 < 100; ++i1) { */
+    /*   some_int[i1] = i1; //rand() % tpltzblocks[i0].lambda; */
+    /* } */
+
+    /* printf("T_block[some_int] = ["); */
+    /* for (i1 = 0; i1 < 10; ++i1) { */
+    /*   printf("%f ,", T_block[some_int[i1]]); */
+    /* } */
+    /* printf("]\n"); */
+    /* fflush(stdout); */
+
+
     
     /* printf("r: %i, start test : blocksize %i, nfft %i\n", rank,blocksize,nfft); */
     /* fflush(stdout); */
@@ -736,20 +844,115 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
     
     /* x = &(WORKD[IPNTR[0]-1]); */
 
-    for (i1 = 0; i1 < nti; ++i1) {
-      x[i1] = WORKD[IPNTR[0]-1+i1];
-    }
-
     tpltz_init(N, tpltzblocks[i0].lambda, &nfft, &blocksize, &T_fft, T_block, &V_fft, &V_rfft, &plan_f, &plan_b, Nm1.flag_stgy);
     
     while (ID0 == 1 || ID0 == -1) {
+      
+      for (i1 = 0; i1 < nti; ++i1) {
+	x[i1] = WORKD[IPNTR[0]-1+i1];
+      }
 
       /* printf("r: %i, ID0 = %i\n", rank,ID0); */
       /* fflush(stdout); */
 
       /* stmm_core(&x,N,1,T_block,T_fft,blocksize,tpltzblocks[i0].lambda,V_fft,V_rfft,nfft,plan_f,plan_b,1,Nm1.flag_stgy.flag_nofft); */
 
-      stmm_main(&x,N,1,0,N,T_block,T_fft,tpltzblocks[i0].lambda,V_fft,V_rfft,plan_f,plan_b,blocksize,nfft,Nm1.flag_stgy);
+      for (i1 = 0; i1 < N; ++i1) {
+	norm_b += x[i1]*x[i1];
+	xx[i1] = 0;
+      }
+      norm_b = sqrt(norm_b);
+
+      /* printf("r: %i, norm rhs = %f\n", rank,norm_b); */
+      /* fflush(stdout); */
+
+      dcg_init(&N,xx,x,&RCI_request,ipar,dpar,tmp);
+
+
+      ipar[4] = 5000;                                      // Set the maximum number of iteration in CG
+      ipar[7] = 1;                                         // Max iter. test,                             not 0 means do it
+      ipar[8] = 1;                                         // Residual test,                              not 0 means do it
+      ipar[9] = 0;                                         // User specific criterion stop test,          not 0 means do it
+      dpar[0] = tol_cg;                                    // Relative tolerance
+
+      dcg_check(&N,xx,x,&RCI_request,ipar,dpar,tmp);
+      
+      if (RCI_request == 0) {
+
+	RCI_request = 1;
+
+	while (RCI_request > 0 && CONVERGED == 0) {
+	  
+	  dcg(&N,xx,x,&RCI_request,ipar,dpar,tmp);
+
+	  if (RCI_request == 1) {
+
+	    for (i1 = 0; i1 < N; ++i1) {
+	      tmp2[i1] = tmp[i1];
+	    }
+	    
+	    stmm_main(&tmp2,N,1,0,N,T_block,T_fft,tpltzblocks[i0].lambda,V_fft,V_rfft,plan_f,plan_b,blocksize,nfft,Nm1.flag_stgy);
+
+	    for (i1 = 0; i1 < N; ++i1) {
+	      tmp[N+i1] = tmp2[i1];
+	    }
+
+
+	  }
+	  else if (RCI_request == 2) {
+
+	    for (i1 = 0; i1 < N ; ++i1) {
+	      tmp2[i1] = xx[i1];
+	    }
+	    
+	    stmm_main(&tmp2,N,1,0,N,T_block,T_fft,tpltzblocks[i0].lambda,V_fft,V_rfft,plan_f,plan_b,blocksize,nfft,Nm1.flag_stgy);
+
+	    stopping_criterion = 0;
+
+	    for (i1 = 0; i1 < N; ++i1) {
+	      stopping_criterion += (tmp2[i1]-x[i1])*(tmp2[i1]-x[i1]);
+	    }
+	    
+	    stopping_criterion = sqrt(stopping_criterion)/norm_b;
+
+	    if (stopping_criterion < tol_cg) {
+	      CONVERGED = 1;
+	      
+	      printf("r: %i, CG has converged : rel_res = %f < tol = %f, in %i iteration\n", rank,stopping_criterion,dpar[0],ipar[3]);
+	      
+	    }
+	    else {
+	      printf("r: %i, not there yet : %f > %f, iteration %i out of %i\n", rank,stopping_criterion,dpar[0],ipar[3],ipar[4]);
+	      fflush(stdout);
+	    }
+
+	    
+	  }
+	  else if (RCI_request < 0){
+	    // printf("r: %i, Problem with CG, RCI_resquest = %i, res = %f < (tol = %f) * (res_ini = %f) = %f in %i iteration out of %i \n", rank,RCI_request,dpar[4],dpar[0],dpar[2],dpar[0]*dpar[2], ipar[3],ipar[4]);
+	    fflush(stdout);
+	  }
+	}
+
+	if (RCI_request == 0) {
+	  // printf("r: %i, CG has converged : rel_res = %f < tol = %f, in %i iteration out of %i\n", rank,dpar[4],dpar[0]/dpar[2],dpar[0],ipar[3],ipar[4]);
+	}
+	else {
+	  printf("r: %i, CG has NOT converged : rel_res = %f < tol = %f, in %i iteration out of %i, rci_request = %i\n", rank,dpar[4]/dpar[2],dpar[0],ipar[3],ipar[4],RCI_request);
+	}
+	fflush(stdout);
+	
+	
+	
+      }
+      else {
+	printf("r: %i, PROBLEM with dcg_init/dcg_check RCI_request = %i\n", rank,RCI_request);
+	fflush(stdout);
+      }
+
+      
+
+      /* stmm_main(&x,N,1,0,N,T_block,T_fft,tpltzblocks[i0].lambda,V_fft,V_rfft,plan_f,plan_b,blocksize,nfft,Nm1.flag_stgy); */
       
       /* stbmmProd(my_block,x); */
       
@@ -759,7 +962,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
 	  fflush(stdout);
 	}
 	
-    	WORKD[IPNTR[1]-1+i1] = x[i1];
+    	WORKD[IPNTR[1]-1+i1] = xx[i1];
 	
     	/* if (ID0 == 1) { */
     	/*   WORKD[IPNTR[2]-1+i1] = WORKD[IPNTR[0]-1+i1]; */
@@ -772,26 +975,36 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
     
     
     tpltz_cleanup(&T_fft,&V_fft,&V_rfft,&plan_f,&plan_b);
-    
-    if (INFO < 0) {
-      printf("PROBLEM dsaupd on r: %i, INFO = %i, ITER = %i\n", rank,INFO,IPARAM[8]);
-    }
-    else {
-      // printf("No problem with dsaupd on r: %i, INFO = %i, ITER = %i\n", rank,INFO,IPARAM[8]);
 
+    if (INFO == 0) {
+
+      for (i1 = 0; i1 < IPARAM[4]; ++i1) {
+	SELECT[i1] = 1;
+      }
+      
       dseupd_(&RVEC, HOWMANY, SELECT, D, Z, &LDZ, &SIGMA, BMAT, &N, WHICH, &NEV, &TOL, RESID, &NCV, V, &LDV, IPARAM, IPNTR, WORKD, WORKL, &lworkl, &INFO);
 
-      if (INFO < 0) {
+      if (INFO =! 0) {
 	printf("PROBLEM dseupd on r: %i, INFO = %i\n", rank,INFO);
       }
       /* else { */
       /* 	printf("No problem with dseupd on r: %i, INFO = %i\n", rank,INFO); */
       /* } */
       fflush(stdout);
-      
+    }
+    else {
+      printf("PROBLEM dsaupd on r: %i, INFO = %i, ITER = %i\n", rank,INFO,IPARAM[8]);
     }
     
     fflush(stdout);
+
+    printf("r: %i, block : %i, the eigenvalues are : ",rank,i0);
+    for (i1 = 0; i1 < NEV; ++i1) {
+      printf("%f ,", D[i1]);
+    }
+    printf("\n");
+    fflush(stdout);
+
 
     
     for (i1=0; i1<nb_defl; ++i1) {

@@ -120,7 +120,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     }
     /* MPI_Barrier(comm); */
     fflush(stdout);
-    int nb_defl = 2; // To give as argument of PCG_GLS_true later on
+    int nb_defl = 10; // To give as argument of PCG_GLS_true later on
     int nb_blocks_loc;
     nb_blocks_loc = Nm1.nb_blocks_loc;
     
