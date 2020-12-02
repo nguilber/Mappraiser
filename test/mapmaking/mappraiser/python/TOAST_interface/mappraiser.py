@@ -195,8 +195,10 @@ class OpMappraiser(Operator):
     def exec(self, data, comm=None):
         """
         Copy data to Mappraiser-compatible buffers and make a map.
+
         Args:
             data (toast.Data): The distributed data.
+
         Returns:
             None
         """
@@ -284,6 +286,7 @@ class OpMappraiser(Operator):
 
     def _count_samples(self):
         """ Loop over the observations and count the number of samples.
+
         """
         if len(self._data.obs) != 1:
             nsamp = 0
@@ -451,6 +454,7 @@ class OpMappraiser(Operator):
     @function_timer
     def _prepare(self):
         """ Examine the data object.
+
         """
         log = Logger.get()
         timer = Timer()
@@ -884,9 +888,11 @@ class OpMappraiser(Operator):
         nside,
     ):
         """ create Mappraiser-compatible buffers
+
         Collect the TOD into Mappraiser buffers. Process pixel weights
         Separate from the rest to reduce the memory high water mark
         When the user has set purge=True
+
         Moving data between toast and Mappraiser buffers has an overhead.
         We perform the operation in a staggered fashion to have the
         overhead only once per node.
