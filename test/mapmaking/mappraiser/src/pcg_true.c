@@ -120,7 +120,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     }
     /* MPI_Barrier(comm); */
     fflush(stdout);
-    int nb_defl = 10; // To give as argument of PCG_GLS_true later on
+    int nb_defl = 5; // To give as argument of PCG_GLS_true later on
     int nb_blocks_loc;
     nb_blocks_loc = Nm1.nb_blocks_loc;
     
@@ -128,7 +128,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     /* fflush(stdout); */
     
     double *Z1; // free l. 200
-    Z1 = (double *) malloc(sizeof(double)*n*nb_defl*nb_blocks_loc);
+    Z1 = (double *) calloc(n*nb_defl*nb_blocks_loc,sizeof(double));
     
     // Build the unorthogonalized coarse space of the blocks on a proc
     Build_ALS(A,Nm1,Z1,nb_defl,n,rank);
@@ -373,9 +373,12 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     }
 
 
-
     MPI_Barrier(comm);
     MPI_Allgatherv(Z3,dim_CS*new_size,MPI_DOUBLE,Z4,count,position,MPI_DOUBLE,comm);
+
+    MPI_Barrier(comm);
+    printf("r: %i, HERE\n", rank);
+    fflush(stdout);
 
     *arg1 = Z4;
 

@@ -476,6 +476,12 @@ int Apply_ATA_bloc(Mat *A, double *ATA, double *y, double *z, int np)
   for (i0 = 0; i0 < np; ++i0) {
 
     for (i1 = 0; i1 < nnz; ++i1) {
+
+      if (isnan(y[i0*nnz+i1]) == 1 || isfinite(y[i0*nnz+i1]) == 0) {
+	printf("PROBLEM of nan = %i, or finite = %i\n",isnan(y[i0*nnz+i1]),isfinite(y[i0*nnz+i1]));
+	fflush(stdout);
+      }
+      
       tmp_vec[i1] = y[i0*nnz+i1];
       for (i2 = 0; i2 < nnz; ++i2) {
 	tmp_blck[i1*nnz+i2] = ATA[i0*nnz*nnz+i1*nnz+i2];
@@ -583,7 +589,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   a_int LDV;
   a_int *IPARAM = (a_int *) calloc(11,sizeof(a_int));
   a_int ISHIFT = 1;
-  a_int maxiter_arnoldi = 1000;
+  a_int maxiter_arnoldi = 10;
   a_int NB = 1;
   a_int MODE = 1;
   IPARAM[0] = ISHIFT;
@@ -622,6 +628,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   char *HOWMANY = "A";
   a_int *SELECT;
   double *D = (double *) calloc(NEV,sizeof(double));
+  // double *D = (double *) calloc(1,sizeof(double));
   double *Z;
   a_int LDZ;
   double SIGMA;
@@ -638,10 +645,6 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   double norm_b = 0;
   int CONVERGED = 0;
   double tol_cg = 1e-2;
-  
-  xx = (double *) calloc(nti,sizeof(double));
-  tmp = (double *) malloc(sizeof(double)*nti*4);
-  tmp2 = (double *) malloc(sizeof(double)*nti);
 
   int vblock_size;
   int blocksize;
@@ -668,12 +671,12 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
     
     nti = tpltzblocks[i0].n; // Size of the block
 
-    printf("r: %i, block %i, T_block[0:9] = ", rank, i0);
-    for (i1 = 0; i1 < 10; ++i1) {
-      printf("%f ,", tpltzblocks[i0].T_block[i1]);
-    }
-    printf("\n");
-    fflush(stdout);
+    /* printf("r: %i, block %i, T_block[0:9] = ", rank, i0); */
+    /* for (i1 = 0; i1 < 10; ++i1) { */
+    /*   printf("%f ,", tpltzblocks[i0].T_block[i1]); */
+    /* } */
+    /* printf("\n"); */
+    /* fflush(stdout); */
     
     N = nti;
     LDV = nti;
@@ -683,8 +686,8 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
     else {
       NCV = N;
     }
-    if (NCV < 200) {
-      NCV = 200;
+    if (NCV < 300) {
+      NCV = 300;
     }
 
     /* printf("r: %i, nti : %i, ncv : %i\n", rank, nti,NCV); */
@@ -698,10 +701,13 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
 
     SELECT = (a_int *) malloc(sizeof(a_int)*NCV);
     Z = (double *) malloc(sizeof(double)*N*NEV);
+    // Z = (double *) malloc(sizeof(double)*N);
     LDZ = N;
     
     x = (double *) malloc(nti*sizeof(double));
-    /* xx = (double *) malloc(nti*sizeof(double)); */
+    xx = (double *) calloc(nti,sizeof(double));
+    tmp = (double *) malloc(sizeof(double)*nti*4);
+    tmp2 = (double *) malloc(sizeof(double)*nti);
 
     if (RESID == NULL || V == NULL || WORKD == NULL || WORKL == NULL || SELECT == NULL || Z == NULL || x == NULL) {
       printf("r: %i, allocation went south :\n", rank);
@@ -782,6 +788,9 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
     tpltz_init(N, tpltzblocks[i0].lambda, &nfft, &blocksize, &T_fft, T_block, &V_fft, &V_rfft, &plan_f, &plan_b, Nm1.flag_stgy);
     
     while (ID0 == 1 || ID0 == -1) {
+
+      /* printf("ID0 = %i\n", ID0); */
+      /* fflush(stdout); */
  
       for (i1 = 0; i1 < nti; ++i1) {
 	x[i1] = WORKD[IPNTR[0]-1+i1];
@@ -809,9 +818,9 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
 	
 	  WORKD[IPNTR[1]-1+i1] = x[i1];
 	
-	  /* if (ID0 == 1) { */
-	  /*   WORKD[IPNTR[2]-1+i1] = WORKD[IPNTR[0]-1+i1]; */
-	  /* } */
+	  if (ID0 == 1) {
+	    WORKD[IPNTR[2]-1+i1] = WORKD[IPNTR[0]-1+i1];
+	  }
 	}
       }
       else{ // We compute the largest eigenvectors of the inverse of the blocks
@@ -821,7 +830,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
 	
 	for (i1 = 0; i1 < N; ++i1) {
 	  norm_b += x[i1]*x[i1];
-	  xx[i1] = 0;
+	  xx[i1] = x[i1];
 	}
 	norm_b = sqrt(norm_b);
 
@@ -831,11 +840,18 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
 	dcg_init(&N,xx,x,&RCI_request,ipar,dpar,tmp);
 
 
+	ipar[0] = N;                                         // Specifies the size of the problem
+	ipar[3] = 0;                                         // contains the current number of iteration
 	ipar[4] = 5000;                                      // Set the maximum number of iteration in CG
+	ipar[5] = 1;                                         // print all the error messages                not 0 means do it
+	ipar[6] = 1;                                         // print all the warning messages              not 0 means do it
 	ipar[7] = 1;                                         // Max iter. test,                             not 0 means do it
 	ipar[8] = 1;                                         // Residual test,                              not 0 means do it
 	ipar[9] = 0;                                         // User specific criterion stop test,          not 0 means do it
+	
 	dpar[0] = tol_cg;                                    // Relative tolerance
+	dpar[1] = 0;                                         // abs. tolerance
+	dpar[2] = norm_b;                                    // specifies the norm-2 of the initial residual
 	
 	dcg_check(&N,xx,x,&RCI_request,ipar,dpar,tmp);
 	
@@ -891,7 +907,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
 	      
 	    }
 	    else if (RCI_request < 0){
-	      // printf("r: %i, Problem with CG, RCI_resquest = %i, res = %f < (tol = %f) * (res_ini = %f) = %f in %i iteration out of %i \n", rank,RCI_request,dpar[4],dpar[0],dpar[2],dpar[0]*dpar[2], ipar[3],ipar[4]);
+	      printf("r: %i, Problem with CG, RCI_resquest = %i, res = %f < (tol = %f) * (res_ini = %f) = %f in %i iteration out of %i \n", rank,RCI_request,dpar[4],dpar[0],dpar[2],dpar[0]*dpar[2], ipar[3],ipar[4]);
 	      fflush(stdout);
 	    }
 	  }
@@ -935,39 +951,87 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
  
       dsaupd_(&ID0, BMAT, &N, WHICH, &NEV, &TOL, RESID, &NCV, V, &LDV, IPARAM, IPNTR, WORKD, WORKL, &lworkl, &INFO);
       
-    }
-    
+    }    
     
     tpltz_cleanup(&T_fft,&V_fft,&V_rfft,&plan_f,&plan_b);
-    
-    if (INFO < 0) {
-      printf("PROBLEM dsaupd on r: %i, INFO = %i, ITER = %i\n", rank,INFO,IPARAM[8]);
-    }
-    else {
-      // printf("No problem with dsaupd on r: %i, INFO = %i, ITER = %i\n", rank,INFO,IPARAM[8]);
 
+    /* if (INFO == 0 || (INFO == 1 && IPARAM[2] != maxiter_arnoldi)) { // everything went good with ARPACK */
+      
+    /*   for (i1 = 0; i1 < IPARAM[4]; ++i1) { // IPARAM[4] = nb of eigenvalue/eigenvector found by ARPACK */
+
+    /* 	for (i2 = 0; i2 < NCV; ++i2) { */
+    /* 	  if (i2 == i1) { */
+    /* 	    SELECT[i2] = 1; */
+    /* 	  } */
+    /* 	  else { */
+    /* 	    SELECT[i2] = 0; */
+    /* 	  } */
+    /* 	} */
+
+    /* 	dseupd_(&RVEC, HOWMANY, SELECT, D, Z, &LDZ, &SIGMA, BMAT, &N, WHICH, &NEV, &TOL, RESID, &NCV, V, &LDV, IPARAM, IPNTR, WORKD, WORKL, &lworkl, &INFO); */
+
+    /* 	if (INFO < 0) { */
+    /* 	  printf("PROBLEM dsEupd on r: %i, INFO = %i, ITER = %i, EV found = %i\n", rank,INFO,IPARAM[2],IPARAM[4]); */
+    /* 	  fflush(stdout); */
+    /* 	} */
+    /* 	else { */
+
+    /* 	  for (i2 = 0; i2 < n; ++i2) { */
+    /* 	    y[i2] = 0; */
+    /* 	    z[i2] = 0; */
+    /* 	  } */
+	
+    /* 	  // ###### Call of the function to do the local pointing : pointing of 1 block       */
+    /* 	  Apply_ATr_bloc(A,Z,y,n,row_indice,nti); // Compute P_i^\top * eigenvector i1 */
+      
+    /* 	  // ###### Do the (A_i^T*A_i)^\dagger local product */
+    /* 	  Apply_ATA_bloc(A,ATA,y,z,np); */
+      
+    /* 	  // ###### Store the resulting vector in coarse space array CS */
+    /* 	  for (i3 = 0; i3 < n; ++i3) { */
+	  
+    /* 	    if (i0*nb_defl*n+i1*n+i3 >= n*nb_defl*nb_blocks_loc) { */
+    /* 	      printf("r: %i, PB SIZE ARRAY i0*nb_defl*n+i1*n+i3 = %i >= n*nb_defl*nb_blocks_loc = %i\n", rank,i0*nb_defl*n+i1*n+i3,n*nb_defl*nb_blocks_loc); */
+    /* 	      fflush(stdout); */
+    /* 	    } */
+	  
+    /* 	    CS[i0*nb_defl*n+i1*n+i3] = z[i3]; */
+    /* 	  } */
+      
+    /* 	} */
+    /*   }	 */
+    /* } */
+    /* else { */
+    /*   printf("PROBLEM dsAupd on r: %i, INFO = %i, ITER = %i, EV found = %i\n", rank,INFO,IPARAM[2],IPARAM[4]); */
+    /*   fflush(stdout); */
+    /* } */
+
+    if (INFO == 0 || (INFO == 1 && IPARAM[4] != maxiter_arnoldi)) {
+      
       dseupd_(&RVEC, HOWMANY, SELECT, D, Z, &LDZ, &SIGMA, BMAT, &N, WHICH, &NEV, &TOL, RESID, &NCV, V, &LDV, IPARAM, IPNTR, WORKD, WORKL, &lworkl, &INFO);
 
-      if (INFO < 0) {
+      if (INFO == 0) {
+	
+	/* printf("r: %i, block : %i, the eigenvalues are :\n", rank,i0); */
+	/* for (i1 = 0; i1 < NEV; ++i1) { */
+	/*   printf("%f ", D[i1]); */
+	/* } */
+	/* printf("\n"); */
+      }
+      else {
 	printf("PROBLEM dseupd on r: %i, INFO = %i\n", rank,INFO);
       }
-      /* else { */
-      /* 	printf("No problem with dseupd on r: %i, INFO = %i\n", rank,INFO); */
-      /* } */
       fflush(stdout);
-
-      /* printf("r: %i, the eigenvalues are D :\n", rank); */
-      /* for (i1 = 0; i1 < NEV; ++i1) { */
-      /*   printf("%f ", D[i1]); */
-      /* } */
-      /* printf("\n"); */
       
-      /* fflush(stdout); */      
     }
-
+    else {
+      printf("PROBLEM dsaupd on r: %i, INFO = %i, ITER = %i, EV found = %i\n", rank,INFO,IPARAM[2],IPARAM[4]);
+      fflush(stdout);
+    }
+    
 
     
-    for (i1=0; i1<nb_defl; ++i1) {
+    for (i1=0; i1<IPARAM[4]; ++i1) {
       
       /* // ###### Get the fourier mode of order i0 and take it as an eigenvector of the block */
       /* get_Fourier_mode(in,out,nti,i0); */
@@ -980,6 +1044,12 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
 	printf("r: %i, PB SIZE ARRAY i1*nti = %i >= NEV*N = %i\n", rank,i1*nti,NEV*N);
 	fflush(stdout);
       }
+
+      for (i2 = 0; i2 < n; ++i2) {
+	y[i2] = 0;
+	z[i2] = 0;
+      }
+
       
       // ###### Call of the function to do the local pointing : pointing of 1 block      
       Apply_ATr_bloc(A,&(Z[i1*nti]),y,n,row_indice,nti); // Compute P_i^\top * eigenvector i1
@@ -999,21 +1069,18 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
     }
 
     
-    /* free(RESID); */
-    /* free(V); */
-    /* free(WORKD); */
-    /* free(WORKL); */
-    /* free(SELECT); */
-    /* free(Z); */
-    /* free(T_block); */
-    /* free(D); */
-
-    /* free(out); */
-    /* free(in); */
+    free(RESID);
+    free(V);
+    free(WORKD);
+    free(WORKL);
+    free(SELECT);
+    free(Z);
+    free(T_block);
     free(x);
-    /* free(xx); */
-    // free(ATA);
-    
+    free(xx);
+    free(tmp);
+    free(tmp2);
+        
     row_indice += nti;
 
     ID0 = 0;
@@ -1022,10 +1089,12 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
     
   free(z);
   free(y);
-  // free(x);
-  // free(out);
-  // free(in);
-  /* free(ATA); */
+  free(D);
+  free(IPARAM);
+  free(IPNTR);
+  free(ATA);
+  free(ipar);
+  free(dpar);
 
   return 0;
 }
