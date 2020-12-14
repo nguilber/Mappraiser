@@ -80,6 +80,9 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 // Redefine number of pixels in the map
   n=A->lcount-(A->nnz)*(A->trash_pix);
 
+  printf("r: %i, local length of the pixel domains : %i\n", rank,n);
+  fflush(stdout);
+
   if (A->nnz > 3) {
     printf("r: %i, A->nnz = %i\n", rank,A->nnz);
     fflush(stdout);
@@ -120,7 +123,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     }
     /* MPI_Barrier(comm); */
     fflush(stdout);
-    int nb_defl = 5; // To give as argument of PCG_GLS_true later on
+    int nb_defl = 2; // To give as argument of PCG_GLS_true later on
     int nb_blocks_loc;
     nb_blocks_loc = Nm1.nb_blocks_loc;
     
@@ -277,13 +280,17 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
 
   
-  int *position, *count;
-  position = (int *) calloc(nb_proc,sizeof(int));
-  count = (int *) malloc(sizeof(int)*nb_proc);
+  /* int *position, *count; */
+  /* position = (int *) calloc(nb_proc,sizeof(int)); */
+  /* count = (int *) malloc(sizeof(int)*nb_proc); */
+
+  long *position, *count;
+  position = (long *) calloc(nb_proc,sizeof(long));
+  count = (long *) malloc(sizeof(long)*nb_proc);
   
   /* position[0] = 0; */
   
-  MPI_Allgather(&new_size,1,MPI_INT,count,1,MPI_INT,comm);
+  MPI_Allgather(&new_size,1,MPI_INT,count,1,MPI_LONG,comm);
   MPI_Barrier(comm);
   
   int tot_size_CS = 0;
@@ -315,23 +322,23 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   /* printf("]\n"); */
   /* fflush(stdout); */
 
-  /* if (rank == 0) { */
+  if (rank == 0) {
     
-  /*   printf("count[i0] = "); */
-  /*   for (i0 = 0; i0 < nb_proc; ++i0) { */
-  /*     printf(" %i,", count[i0]); */
-  /*   } */
-  /*   printf("\n"); */
-  /*   fflush(stdout); */
+    printf("count[i0] = ");
+    for (i0 = 0; i0 < nb_proc; ++i0) {
+      printf(" %li,", count[i0]);
+    }
+    printf("\n");
+    fflush(stdout);
 
-  /*   printf("posision[i0] = "); */
-  /*   for (i0 = 0; i0 < nb_proc; ++i0) { */
-  /*     printf(" %i,", position[i0]); */
-  /*   } */
-  /*   printf("\n"); */
-  /*   fflush(stdout); */
+    printf("posision[i0] = ");
+    for (i0 = 0; i0 < nb_proc; ++i0) {
+      printf(" %li,", position[i0]);
+    }
+    printf("\n");
+    fflush(stdout);
     
-  /* } */
+  }
   
   double *Z4;
   double *Z5;
@@ -364,8 +371,8 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   
     Z4 = (double *) malloc(sizeof(double)*dim_CS*tot_size_CS);
 
-    /* printf("r: %i, FUCK problem with the Allgather de Z3 : (count[nb_proc-1]=%i)+(position[nb_proc-1]=%i) = %i,  dim_CS*tot_size_CS = %i\n", rank,count[nb_proc-1],position[nb_proc-1],count[nb_proc-1]+position[nb_proc-1],dim_CS*tot_size_CS); */
-    /* fflush(stdout); */
+    printf("r: %i, FUCK problem with the Allgather de Z3 : (count[nb_proc-1]=%li)+(position[nb_proc-1]=%li) = %li,  dim_CS*tot_size_CS = %li\n", rank,count[nb_proc-1],position[nb_proc-1],count[nb_proc-1]+position[nb_proc-1],dim_CS*tot_size_CS);
+    fflush(stdout);
     
     if (count[nb_proc-1]+position[nb_proc-1] > dim_CS*tot_size_CS) {
       printf("r: %i, FUCK problem with the Allgather de Z3 : count[nb_proc-1]+position[nb_proc-1] = %i,  dim_CS*tot_size_CS = %i\n", rank,count[nb_proc-1]+position[nb_proc-1],dim_CS*tot_size_CS);
@@ -376,13 +383,14 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     MPI_Barrier(comm);
     MPI_Allgatherv(Z3,dim_CS*new_size,MPI_DOUBLE,Z4,count,position,MPI_DOUBLE,comm);
 
+    *arg1 = Z4;
+
     MPI_Barrier(comm);
     printf("r: %i, HERE\n", rank);
     fflush(stdout);
-
-    *arg1 = Z4;
-
+    
     new_size = Orthogonalize_Space_loc(arg1,dim_CS,tot_size_CS,tol_svd,rank);
+
 
     free(Z4);
 
