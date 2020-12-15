@@ -280,17 +280,17 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
 
   
-  /* int *position, *count; */
-  /* position = (int *) calloc(nb_proc,sizeof(int)); */
-  /* count = (int *) malloc(sizeof(int)*nb_proc); */
+  int *position, *count;
+  position = (int *) calloc(nb_proc,sizeof(int));
+  count = (int *) malloc(sizeof(int)*nb_proc);
 
-  long *position, *count;
-  position = (long *) calloc(nb_proc,sizeof(long));
-  count = (long *) malloc(sizeof(long)*nb_proc);
+  /* long *position, *count; */
+  /* position = (long *) calloc(nb_proc,sizeof(long)); */
+  /* count = (long *) malloc(sizeof(long)*nb_proc); */
   
   /* position[0] = 0; */
   
-  MPI_Allgather(&new_size,1,MPI_INT,count,1,MPI_LONG,comm);
+  MPI_Allgather(&new_size,1,MPI_INT,count,1,MPI_INT,comm);
   MPI_Barrier(comm);
   
   int tot_size_CS = 0;
@@ -326,14 +326,14 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     
     printf("count[i0] = ");
     for (i0 = 0; i0 < nb_proc; ++i0) {
-      printf(" %li,", count[i0]);
+      printf(" %i,", count[i0]);
     }
     printf("\n");
     fflush(stdout);
 
     printf("posision[i0] = ");
     for (i0 = 0; i0 < nb_proc; ++i0) {
-      printf(" %li,", position[i0]);
+      printf(" %i,", position[i0]);
     }
     printf("\n");
     fflush(stdout);
@@ -371,7 +371,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   
     Z4 = (double *) malloc(sizeof(double)*dim_CS*tot_size_CS);
 
-    printf("r: %i, FUCK problem with the Allgather de Z3 : (count[nb_proc-1]=%li)+(position[nb_proc-1]=%li) = %li,  dim_CS*tot_size_CS = %li\n", rank,count[nb_proc-1],position[nb_proc-1],count[nb_proc-1]+position[nb_proc-1],dim_CS*tot_size_CS);
+    printf("r: %i, FUCK problem with the Allgather de Z3 : (count[nb_proc-1]=%i)+(position[nb_proc-1]=%i) = %i,  dim_CS*tot_size_CS = %i\n", rank,count[nb_proc-1],position[nb_proc-1],count[nb_proc-1]+position[nb_proc-1],dim_CS*tot_size_CS);
     fflush(stdout);
     
     if (count[nb_proc-1]+position[nb_proc-1] > dim_CS*tot_size_CS) {
