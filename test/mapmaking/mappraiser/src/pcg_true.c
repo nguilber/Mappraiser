@@ -150,7 +150,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     
     arg1  = (double **) malloc(sizeof(double *));
     *arg1 = Z1;
-  
+    
     // Orthogonalize the coarse space Z on a proc
     new_size = Orthogonalize_Space_loc(arg1,n,nb_defl*nb_blocks_loc,tol_svd,rank);
   
@@ -379,7 +379,6 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
       fflush(stdout);
     }
 
-
     MPI_Barrier(comm);
     MPI_Allgatherv(Z3,dim_CS*new_size,MPI_DOUBLE,Z4,count,position,MPI_DOUBLE,comm);
 
@@ -390,7 +389,6 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     fflush(stdout);
     
     new_size = Orthogonalize_Space_loc(arg1,dim_CS,tot_size_CS,tol_svd,rank);
-
 
     free(Z4);
 
@@ -654,20 +652,23 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
    /* }    */
 
    double *EZTg = (double *) malloc(nb_col_Q*sizeof(double));
-
+   double *EZTg_reduce = (double *) malloc(nb_col_Q*sizeof(double));
+   
    cblas_dgemv(CblasColMajor, CblasTrans, n, nb_col_Q, 1, Z5, n, g, 1, 0, EZTg, 1);
 
    /* double *EQg = (double *) malloc(nb_col_Q*sizeof(double)); */
 
    info = LAPACKE_dpotrs(LAPACK_ROW_MAJOR,'L',nb_col_Q,1,E,nb_col_Q,EZTg,1);
-   
+
    if (info < 0) {
      printf("Something went wrong applying E inverse to a vector : info = %i\n",info);
    }
 
+   MPI_Allreduce(EZTg,EZTg_reduce,nb_col_Q,MPI_DOUBLE,MPI_SUM,comm);
+   
    double *Qg = (double *) malloc(n*sizeof(double));
 
-   cblas_dgemv(CblasColMajor, CblasNoTrans, n, nb_col_Q, 1, Z5, n, EZTg, 1, 0, Qg, 1);
+   cblas_dgemv(CblasColMajor, CblasNoTrans, n, nb_col_Q, 1, Z5, n, EZTg_reduce, 1, 0, Qg, 1);
 
    /* double *Qg_compress = (double *) malloc(n*sizeof(double)); */
 
@@ -819,7 +820,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
      /* } */
 
      /* double *EZTg = (double *) malloc(nb_col_Q*sizeof(double)); */
-
+        
      cblas_dgemv(CblasColMajor, CblasTrans, n, nb_col_Q, 1, Z5, n, g, 1, 0, EZTg, 1);
 
      /* double *EQg = (double *) malloc(nb_col_Q*sizeof(double)); */
@@ -830,7 +831,9 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
        printf("Something went wrong applying E inverse to a vector : info = %i\n",info);
      }
 
-     cblas_dgemv(CblasColMajor, CblasNoTrans, n, nb_col_Q, 1, Z5, n, EZTg, 1, 0, Qg, 1);
+     MPI_Allreduce(EZTg,EZTg_reduce,nb_col_Q,MPI_DOUBLE,MPI_SUM,comm);
+
+     cblas_dgemv(CblasColMajor, CblasNoTrans, n, nb_col_Q, 1, Z5, n, EZTg_reduce, 1, 0, Qg, 1);
 
      /* double *Qg_compress = (double *) malloc(n*sizeof(double)); */
 
