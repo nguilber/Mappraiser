@@ -42,6 +42,20 @@ extern void dseupd_(int *rvec, char *All, int *select, double *d,
 
 /* void dsaupd_(int* ido, char *bmat, int *n, char *which, int *nev, double *tol, double *resid, int *ncv, double *v, int *ldv, int *iparam, int *ipntr, double *workd, double *workl, int *lworkl, int *info ); */
 
+int Check_Inf_NaN(double *array, int size_array, int rank)
+{
+  int i0;
+  
+  for (i0 = 0; i0 < size_array; ++i0) {
+    if (isnan(array[i0]) || (1-isfinite(array[i0]))) {
+      printf("r: %i, elts %i of array is %i-NaN, %i-Inffinite\n", rank,i0,isnan(array[i0]),1-isfinite(array[i0]));
+      fflush(stdout);
+    }
+  }
+
+  return 0;
+}
+
 int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, int *lhits)
 {
   int           i, j, k ;                       // some indexes
@@ -545,6 +559,470 @@ int get_Fourier_mode(fftw_complex *in, fftw_complex *out, int size, int index_mo
 
   return 0;
 }
+
+// Build the coarse space from eigenvector of the blocks
+int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
+{
+  
+  int row_indice;                     // Index of the first line in depointing matrix A for the bloc we look at
+  int nnz;                            // Number of non-zeros per line in A
+  int np;                             // number of pixels   
+  double *ATA;                        // Array to store the (A_i.T * A_i) block operator
+  /* fftw_complex *in;                   // Vector to store entry of the FFT                                                    */
+  /* fftw_complex *out;                  // Vector to store output of the FFT */
+  // double *diagNm1;                    // Vector to store the diagonal of Nm1
+  double *x;                          // Vector to store eigen vector w.r.t to one bloc
+  // double *xx;
+  double *y;                          // Vector to store A_i.T * x
+  double *z;                          // Vector to store (A_i.T * A_i)^{-1} * y                                             
+  int i0,i1,i2,i3,i4;                 // loop indices
+  
+  a_int ID0 = 0;
+  a_int N;
+  a_int NEV = nb_defl;
+  char *BMAT = "I";
+  int invert = 1;
+  char *WHICH;
+  if (invert == 0) {
+    WHICH = "SM";
+
+    /* printf("WHICH = SM\n"); */
+  }
+  else {
+    WHICH = "LM";
+    
+    /* printf("WHICH = LM\n"); */
+  }
+  /* fflush(stdout); */
+  
+  double TOL = 1e-2;
+  double *RESID;
+  a_int NCV;
+  double *V;
+  a_int LDV;
+  a_int *IPARAM = (a_int *) calloc(11,sizeof(a_int));
+  a_int ISHIFT = 1;
+  a_int maxiter_arnoldi = 20;
+  a_int NB = 1;
+  a_int MODE = 1;
+  IPARAM[0] = ISHIFT;
+  IPARAM[2] = maxiter_arnoldi;
+  IPARAM[3] = NB;
+  IPARAM[6] = MODE;
+  a_int *IPNTR = (a_int *) malloc(sizeof(a_int)*11);
+  double *WORKD;
+  double *WORKL;
+  a_int lworkl;
+  a_int INFO = 0;
+  double norm_residual;
+  double norm_residual_0;
+
+  /* (RVEC, HOWMANY, SELECT, D, Z, SIGMA, BMAT, N, WHICH, NEV, TOL, RESID, NCV, V, IPARAM, IPNTR, WORKD, WORKL, INFO) */
+
+/* extern void dsaupd_(int *ido, char *bmat, int *n, char *which, */
+/*             int *nev, double *tol, double *resid, int *ncv, */
+/*             double *v, int *ldv, int *iparam, int *ipntr, */
+/*             double *workd, double *workl, int *lworkl, */
+/*             int *info); */
+
+/* extern void dseupd_(int *rvec, char *All, int *select, double *d, */
+/*             double *v, int *ldv, double *sigma, */
+/*             char *bmat, int *n, char *which, int *nev, */
+/*             double *tol, double *resid, int *ncv, double *tv, */
+/*             int *tldv, int *iparam, int *ipntr, double *workd, */
+/*             double *workl, int *lworkl, int *ierr); */
+
+  a_int RVEC = 1;
+  char *HOWMANY = "A";
+  a_int *SELECT;
+  double *D = (double *) calloc(NEV,sizeof(double));
+  // double *D = (double *) calloc(1,sizeof(double));
+  double *Z;
+  a_int LDZ;
+  double SIGMA;
+
+  double *xx;
+  int RCI_request;
+  int *ipar;
+  ipar = (int *) malloc(sizeof(int)*128);
+  double *dpar;
+  dpar = (double *) malloc(sizeof(double)*128);
+  double *tmp;
+  double *tmp2;
+  double stopping_criterion = 0;
+  double norm_b = 0;
+  int CONVERGED = 0;
+  double tol_cg = 1e-2;  
+  
+  nnz = A->nnz;
+  np = n/nnz;
+  y = (double *) calloc(n,sizeof(double));
+  z = (double *) malloc(n*sizeof(double));
+  /* getlocDiagN(A,Nm1,diagNm1); */
+  ATA = (double *)  calloc(np*nnz*nnz,sizeof(double));
+
+  
+
+
+
+
+
+
+
+
+  N = 0;
+
+  for (i0 = 0; i0 < Nm1.nb_blocks_loc; ++i0) {
+    /* printf("r: %i, size of block %i : %i\n", rank,i0,Nm1.tpltzblocks[i0].n); */
+    /* fflush(stdout); */
+
+    N += Nm1.tpltzblocks[i0].n;
+  }
+  
+  Build_ATA_bloc(A,Nm1,ATA,0,N,np,rank,i0);
+  
+  LDV = N;
+  if (2*nb_defl+1 < N) {
+    NCV = 2*nb_defl+1;
+  }
+  else {
+    NCV = N;
+  }
+  if (NCV < 150) {
+    NCV = 150;
+  }
+  
+  RESID = (double *) malloc(sizeof(double)*N);
+  V = (double *) malloc(sizeof(double)*LDV*NCV);
+  WORKD = (double *) malloc(sizeof(double)*3*N);
+  lworkl = NCV*(NCV+8);
+  WORKL = (double *) malloc(sizeof(double)*lworkl);
+  
+  SELECT = (a_int *) malloc(sizeof(a_int)*NCV);
+  Z = (double *) malloc(sizeof(double)*N*NEV);
+  // Z = (double *) malloc(sizeof(double)*N);
+  LDZ = N;
+  
+  x = (double *) malloc(N*sizeof(double));
+  xx = (double *) calloc(N,sizeof(double));
+  tmp = (double *) malloc(sizeof(double)*N*4);
+  tmp2 = (double *) malloc(sizeof(double)*N);
+  
+  if (RESID == NULL || V == NULL || WORKD == NULL || WORKL == NULL || SELECT == NULL || Z == NULL || x == NULL) {
+    printf("r: %i, allocation went south :\n", rank);
+    printf("RESID == %i || V == %i || WORKD == %i || WORKL == %i || SELECT == %i || Z == %i || x == %i\n", (int) RESID, (int) V, (int) WORKD, (int) WORKL, (int) SELECT, (int) Z, (int) x);
+    fflush(stdout);
+    
+  }
+  
+  /* // ###### Build ATA w.r.t. the local block i0 */
+  /* Build_ATA_bloc(A,Nm1,ATA,row_indice,nti,np,rank,i0); */
+
+  
+  /* in = (fftw_complex *) calloc(nti,sizeof(fftw_complex)); */
+  /* out = (fftw_complex *) calloc(nti,sizeof(fftw_complex)); */
+
+  double *d = (double *) malloc(sizeof(double)*Nm1.nb_blocks_loc);
+  
+  for (i0 = 0; i0<Nm1.nb_blocks_loc; ++i0) {
+    d[i0] = Nm1.tpltzblocks[i0].T_block[0];
+  }
+
+
+  dsaupd_(&ID0, BMAT, &N, WHICH, &NEV, &TOL, RESID, &NCV, V, &LDV, IPARAM, IPNTR, WORKD, WORKL, &lworkl, &INFO);
+
+  int compteur = 0;
+
+  /* for (i0 = 0; i0 < N; ++i0) { */
+  /*   x[i0] = 1; */
+  /* } */
+  /* stbmmProd(Nm1,x); */
+
+  /* MPI_Barrier(A->comm); */
+  /* printf("r: %i, x[0,1,2,3,4,5] = [%f,%f,%f,%f,%f,%f]\n", rank,x[0],x[1],x[2],x[3],x[4],x[5]); */
+  /* fflush(stdout); */
+      
+  while (ID0 == 1 || ID0 == -1) {
+
+    /* printf("ID0 = %i\n", ID0); */
+    /* fflush(stdout); */
+ 
+    for (i0 = 0; i0 < N; ++i0) {
+      x[i0] = WORKD[IPNTR[0]-1+i0];
+    }
+
+    /* printf("r: %i, ID0 = %i\n", rank,ID0); */
+    /* fflush(stdout); */
+
+    if (invert == 0) { // We compute the smallest eigenvectors of the blocks
+      
+      /* printf("r: %i, We compute the smallest eigenvectors of the blocks\n", rank); */
+      /* fflush(stdout); */
+      
+      /* stmm_core(&x,N,1,T_block,T_fft,blocksize,tpltzblocks[i0].lambda,V_fft,V_rfft,nfft,plan_f,plan_b,1,Nm1.flag_stgy.flag_nofft); */
+      
+      /* stmm_main(&x,N,1,0,N,T_block,T_fft,tpltzblocks[i0].lambda,V_fft,V_rfft,plan_f,plan_b,blocksize,nfft,Nm1.flag_stgy); */
+      
+      stbmmProd(Nm1,x);
+
+      compteur += 1;
+      
+      /* MPI_Barrier(A->comm); */
+      /* printf("r: %i, number of stbmmProd call : %i\n", rank,compteur); */
+      /* fflush(stdout); */
+      
+      for (i0 = 0; i0 < N; ++i0) {
+	if (IPNTR[1]-1+i0 >= 3*N) {
+	  printf("r: %i, PB ARRAY SIZE IPNTR[1]-1+i0=%i >= 3*N=%i\n", rank,IPNTR[1]-1+i0,3*N);
+	  fflush(stdout);
+	}
+	
+	WORKD[IPNTR[1]-1+i0] = x[i0]; // /d[i0%Nm1.local_V_size]; // CHECK THAT local_V_size*nb_blocks_loc==N
+
+	if (ID0 == 1) {
+
+	  if (IPNTR[2]-1+i0 >= 3*N) {
+	    printf("r: %i, PB ARRAY SIZE IPNTR[2]-1+i0=%i >= 3*N=%i\n", rank,IPNTR[2]-1+i0,3*N);
+	    fflush(stdout);
+	  }
+	  
+	  WORKD[IPNTR[2]-1+i0] = WORKD[IPNTR[0]-1+i0];
+	}
+		
+      }
+      
+    }
+    else{ // We compute the largest eigenvectors of the inverse of the blocks
+      
+      /* printf("r: %i, We compute the largest eigenvectors of the inverse of the blocks\n", rank); */
+      /* fflush(stdout); */
+      
+      for (i0 = 0; i0 < N; ++i0) {
+	norm_b += x[i0]*x[i0];
+	xx[i0] = x[i0];
+      }
+      norm_b = sqrt(norm_b);
+      
+      /* printf("r: %i, norm rhs = %f\n", rank,norm_b); */
+      /* fflush(stdout); */
+
+      dcg_init(&N,xx,x,&RCI_request,ipar,dpar,tmp);
+      
+      
+      ipar[0] = N;                                         // Specifies the size of the problem
+      ipar[3] = 0;                                         // contains the current number of iteration
+      ipar[4] = 5000;                                      // Set the maximum number of iteration in CG
+      ipar[5] = 1;                                         // print all the error messages                not 0 means do it
+      ipar[6] = 1;                                         // print all the warning messages              not 0 means do it
+      ipar[7] = 1;                                         // Max iter. test,                             not 0 means do it
+      ipar[8] = 1;                                         // Residual test,                              not 0 means do it
+      ipar[9] = 0;                                         // User specific criterion stop test,          not 0 means do it
+      
+      dpar[0] = tol_cg;                                    // Relative tolerance
+      dpar[1] = 0;                                         // abs. tolerance
+      dpar[2] = norm_b;                                    // specifies the norm-2 of the initial residual
+	
+      dcg_check(&N,xx,x,&RCI_request,ipar,dpar,tmp);
+      
+      if (RCI_request == 0) {
+	
+	RCI_request = 1;
+	
+	while (RCI_request > 0 && CONVERGED == 0) {
+	  
+	  dcg(&N,xx,x,&RCI_request,ipar,dpar,tmp);
+	  
+	  if (RCI_request == 1) {
+	    
+	    for (i0 = 0; i0 < N; ++i0) {
+	      tmp2[i0] = tmp[i0];
+	    }
+	    
+	    /* stmm_main(&tmp2,N,1,0,N,T_block,T_fft,tpltzblocks[i0].lambda,V_fft,V_rfft,plan_f,plan_b,blocksize,nfft,Nm1.flag_stgy); */
+
+	    stbmmProd(Nm1,tmp2);
+	    
+	    for (i0 = 0; i0 < N; ++i0) {
+	      tmp[N+i0] = tmp2[i0];
+	    }
+	    
+	    
+	  }
+	  else if (RCI_request == 2) {
+	    
+	    for (i0 = 0; i0 < N ; ++i0) {
+	      tmp2[i0] = xx[i0];
+	    }
+	    
+	    /* stmm_main(&tmp2,N,1,0,N,T_block,T_fft,tpltzblocks[i0].lambda,V_fft,V_rfft,plan_f,plan_b,blocksize,nfft,Nm1.flag_stgy); */
+	    
+	    stbmmProd(Nm1,tmp2);
+	    
+	    stopping_criterion = 0;
+	    
+	    for (i0 = 0; i0 < N; ++i0) {
+	      stopping_criterion += (tmp2[i0]-x[i0])*(tmp2[i0]-x[i0]);
+	    }
+	    
+	    stopping_criterion = sqrt(stopping_criterion)/norm_b;
+	    
+	    if (stopping_criterion < tol_cg) {
+	      CONVERGED = 1;
+	      
+	      printf("r: %i, CG has converged : rel_res = %f < tol = %f, in %i iteration\n", rank,stopping_criterion,dpar[0],ipar[3]);
+	      
+	    }
+	    else {
+	      printf("r: %i, not there yet : %f > %f, iteration %i out of %i\n", rank,stopping_criterion,dpar[0],ipar[3],ipar[4]);
+	      fflush(stdout);
+	    }
+	    
+	    
+	  }
+	  else if (RCI_request < 0){
+	    printf("r: %i, Problem with CG, RCI_resquest = %i, res = %f < (tol = %f) * (res_ini = %f) = %f in %i iteration out of %i \n", rank,RCI_request,dpar[4],dpar[0],dpar[2],dpar[0]*dpar[2], ipar[3],ipar[4]);
+	    fflush(stdout);
+	  }
+	}
+	
+	if (RCI_request == 0) {
+	  // printf("r: %i, CG has converged : rel_res = %f < tol = %f, in %i iteration out of %i\n", rank,dpar[4],dpar[0]/dpar[2],dpar[0],ipar[3],ipar[4]);
+	}
+	else {
+	  printf("r: %i, CG has NOT converged : rel_res = %f < tol = %f, in %i iteration out of %i, rci_request = %i\n", rank,dpar[4]/dpar[2],dpar[0],ipar[3],ipar[4],RCI_request);
+	}
+	fflush(stdout);
+	
+	
+	  
+      }
+      else {
+	printf("r: %i, PROBLEM with dcg_init/dcg_check RCI_request = %i\n", rank,RCI_request);
+	fflush(stdout);
+      }
+      
+      
+      
+      /* stmm_main(&x,N,1,0,N,T_block,T_fft,tpltzblocks[i0].lambda,V_fft,V_rfft,plan_f,plan_b,blocksize,nfft,Nm1.flag_stgy); */
+      
+      /* stbmmProd(my_block,x); */
+      
+      for (i0 = 0; i0 < N; ++i0) {
+	if (IPNTR[1]-1+i0 >= 3*N) {
+	  printf("r: %i, PB ARRAY SIZE IPNTR[1]-1+i0=%i >= 3*N=%i\n", rank,IPNTR[1]-1+i0,3*N);
+	  fflush(stdout);
+	}
+	
+	WORKD[IPNTR[1]-1+i0] = xx[i0]; //*d[i0 % Nm1.local_V_size]; // CHECK THAT local_V_size*nb_blocks_loc==nrow
+	
+	/* if (ID0 == 1) { */
+	/*   WORKD[IPNTR[2]-1+i0] = WORKD[IPNTR[0]-1+i0]; */
+	/* } */
+      }
+      
+    }
+
+    dsaupd_(&ID0, BMAT, &N, WHICH, &NEV, &TOL, RESID, &NCV, V, &LDV, IPARAM, IPNTR, WORKD, WORKL, &lworkl, &INFO);
+
+  }
+
+  if (INFO == 0 || (INFO == 1 && IPARAM[2] != maxiter_arnoldi)) {
+    
+    dseupd_(&RVEC, HOWMANY, SELECT, D, Z, &LDZ, &SIGMA, BMAT, &N, WHICH, &NEV, &TOL, RESID, &NCV, V, &LDV, IPARAM, IPNTR, WORKD, WORKL, &lworkl, &INFO);
+
+    /* printf("NOOOOO PROBLEM dsaupd on r: %i, INFO = %i, ITER = %i, EV found = %i\n", rank,INFO,IPARAM[2],IPARAM[4]); */
+    /* fflush(stdout); */
+    
+    if (INFO == 0 && rank == 0) {
+      
+      printf("r: %i, the eigenvalues are :\n", rank);
+      for (i0 = 0; i0 < IPARAM[4]; ++i0) {
+        printf("%f ", D[i0]);
+      }
+      printf("\n");
+    }
+    else if (INFO != 0) {
+      printf("PROBLEM dseupd on r: %i, INFO = %i\n", rank,INFO);
+    }
+    fflush(stdout);
+    
+  }
+  else {
+    printf("PROBLEM dsaupd on r: %i, INFO = %i, ITER = %i, EV found = %i\n", rank,INFO,IPARAM[2],IPARAM[4]);
+    fflush(stdout);
+  }
+
+  
+  
+  for (i0=0; i0<IPARAM[4]; ++i0) {
+    
+    if (i0*N >= NEV*N) {
+      printf("r: %i, PB SIZE ARRAY i0*nti = %i >= NEV*N = %i\n", rank,i0*N,NEV*N);
+      fflush(stdout);
+    }
+    
+    for (i1 = 0; i1 < n; ++i1) {
+      y[i1] = 0;
+      z[i1] = 0;
+    }
+    
+    
+    // ###### Call of the function to do the local pointing : pointing of 1 block      
+    // Apply_ATr_bloc(A,&(Z[i0*nti]),y,n,row_indice,nti); // Compute P_i^\top * eigenvector i0
+    TrMatVecProd(A,&(Z[i0*N]),y,0);
+    
+    // ###### Do the (A_i^T*A_i)^\dagger local product
+    Apply_ATA_bloc(A,ATA,y,z,np);
+    
+    // ###### Store the resulting vector in coarse space array CS
+    for (i2 = 0; i2 < n; ++i2) {
+      if (i0*n+i2 >= n*nb_defl) {
+	printf("r: %i, PB SIZE ARRAY i0*nb_defl*n+i0*n+i2 = %i >= n*nb_defl*nb_blocks_loc = %i\n", rank,i0*nb_defl*n+i0*n+i2,n*nb_defl*Nm1.nb_blocks_loc);
+	fflush(stdout);
+      }
+      CS[i0*n+i2] = z[i2];
+    }
+    
+  }
+  
+  
+  free(RESID);
+  free(V);
+  free(WORKD);
+  free(WORKL);
+  free(SELECT);
+  free(Z);
+  free(x);
+  free(xx);
+  free(tmp);
+  free(tmp2);
+    
+
+
+
+
+
+
+
+
+
+  
+
+
+
+    
+  free(z);
+  free(y);
+  free(D);
+  free(IPARAM);
+  free(IPNTR);
+  free(ATA);
+  free(ipar);
+  free(dpar);
+
+  return 0;
+}
+
 
 // Build the coarse space from eigenvector of the blocks
 int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
@@ -1098,6 +1576,7 @@ int Build_ALS(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
 
   return 0;
 }
+
 
 // Build a orthonormal basis of a coarse space Z
 int Orthogonalize_Space_loc(double **Z, int nb_rows, int nb_cols, double tol_svd, int rank)

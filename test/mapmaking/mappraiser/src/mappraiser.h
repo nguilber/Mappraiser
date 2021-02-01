@@ -60,7 +60,8 @@ int DiagAtA(Mat *A, double *diag, int pflag);
 
 
 
-
+// Check is there are some NaN or Inf in an array of double
+int Check_Inf_NaN(double *array, int size_array, int rank);
 
 // Build (A_i.T * A_i) bloc of size nnz*nnz operator
 int Build_ATA_bloc(Mat *A, Tpltz Nm1, double *ATA, int row_indice, int nb_rows, int np, int rank, int bloc);
@@ -73,6 +74,9 @@ int Apply_ATA_bloc(Mat *A, double *ATA, double *y, double *z, int np);
 
 // Get the fourier mode of order index_mode through fftw3 package
 int get_Fourier_mode(fftw_complex *in, fftw_complex *out, int size, int index_mode);
+
+// Build the coarse space from eigenvector of the blocks
+int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank);
 
 // Build the coarse space from eigenvector of the blocks
 int Build_ALS(Mat *A, Tpltz Nm1, double *Z, int nb_defl, int np, int rank);

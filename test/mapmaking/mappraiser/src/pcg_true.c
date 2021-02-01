@@ -80,8 +80,8 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 // Redefine number of pixels in the map
   n=A->lcount-(A->nnz)*(A->trash_pix);
 
-  printf("r: %i, local length of the pixel domains : %i\n", rank,n);
-  fflush(stdout);
+  /* printf("r: %i, local length of the pixel domains : %i\n", rank,n); */
+  /* fflush(stdout); */
 
   if (A->nnz > 3) {
     printf("r: %i, A->nnz = %i\n", rank,A->nnz);
@@ -123,7 +123,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     }
     /* MPI_Barrier(comm); */
     fflush(stdout);
-    int nb_defl = 2; // To give as argument of PCG_GLS_true later on
+    int nb_defl = 50; // To give as argument of PCG_GLS_true later on
     int nb_blocks_loc;
     nb_blocks_loc = Nm1.nb_blocks_loc;
     
@@ -131,10 +131,12 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     /* fflush(stdout); */
     
     double *Z1; // free l. 200
-    Z1 = (double *) calloc(n*nb_defl*nb_blocks_loc,sizeof(double));
+    // Z1 = (double *) calloc(n*nb_defl*nb_blocks_loc,sizeof(double));
+    Z1 = (double *) calloc(n*nb_defl,sizeof(double));
     
     // Build the unorthogonalized coarse space of the blocks on a proc
-    Build_ALS(A,Nm1,Z1,nb_defl,n,rank);
+    Build_ALS_proc(A,Nm1,Z1,nb_defl,n,rank);
+    // Build_ALS(A,Nm1,Z1,nb_defl,n,rank);
     
     if (rank == 0) {
       printf("######## ALS built ##############\n");
@@ -142,7 +144,9 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     fflush(stdout);
     
     tol_svd = 1e-10; // To give as argument of PCG_GLS_true later on
-    
+
+    Check_Inf_NaN(Z1,nb_defl*n,rank);    
+
     if (rank == 0) {
       printf("######## Start Ortho ##############\n");
     }
@@ -152,11 +156,13 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     *arg1 = Z1;
     
     // Orthogonalize the coarse space Z on a proc
-    new_size = Orthogonalize_Space_loc(arg1,n,nb_defl*nb_blocks_loc,tol_svd,rank);
-  
-    printf("r: %i : Nb of vec in CS after loc orth. : %i\n", rank, new_size);
-    fflush(stdout);
-  
+    new_size = Orthogonalize_Space_loc(arg1,n,nb_defl,tol_svd,rank);
+
+    if (rank == 0) {
+      printf("r: %i : Nb of vec in CS after loc orth. : %i\n", rank, new_size);
+      fflush(stdout);
+    }
+      
     Z2 = *arg1;
 
     if (Z1 != NULL) {
@@ -322,23 +328,23 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   /* printf("]\n"); */
   /* fflush(stdout); */
 
-  if (rank == 0) {
+  /* if (rank == 0) { */
     
-    printf("count[i0] = ");
-    for (i0 = 0; i0 < nb_proc; ++i0) {
-      printf(" %i,", count[i0]);
-    }
-    printf("\n");
-    fflush(stdout);
+  /*   printf("count[i0] = "); */
+  /*   for (i0 = 0; i0 < nb_proc; ++i0) { */
+  /*     printf(" %i,", count[i0]); */
+  /*   } */
+  /*   printf("\n"); */
+  /*   fflush(stdout); */
 
-    printf("posision[i0] = ");
-    for (i0 = 0; i0 < nb_proc; ++i0) {
-      printf(" %i,", position[i0]);
-    }
-    printf("\n");
-    fflush(stdout);
+  /*   printf("posision[i0] = "); */
+  /*   for (i0 = 0; i0 < nb_proc; ++i0) { */
+  /*     printf(" %i,", position[i0]); */
+  /*   } */
+  /*   printf("\n"); */
+  /*   fflush(stdout); */
     
-  }
+  /* } */
   
   double *Z4;
   double *Z5;
@@ -371,8 +377,8 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
   
     Z4 = (double *) malloc(sizeof(double)*dim_CS*tot_size_CS);
 
-    printf("r: %i, FUCK problem with the Allgather de Z3 : (count[nb_proc-1]=%i)+(position[nb_proc-1]=%i) = %i,  dim_CS*tot_size_CS = %i\n", rank,count[nb_proc-1],position[nb_proc-1],count[nb_proc-1]+position[nb_proc-1],dim_CS*tot_size_CS);
-    fflush(stdout);
+    /* printf("r: %i, FUCK problem with the Allgather de Z3 : (count[nb_proc-1]=%i)+(position[nb_proc-1]=%i) = %i,  dim_CS*tot_size_CS = %i\n", rank,count[nb_proc-1],position[nb_proc-1],count[nb_proc-1]+position[nb_proc-1],dim_CS*tot_size_CS); */
+    /* fflush(stdout); */
     
     if (count[nb_proc-1]+position[nb_proc-1] > dim_CS*tot_size_CS) {
       printf("r: %i, FUCK problem with the Allgather de Z3 : count[nb_proc-1]+position[nb_proc-1] = %i,  dim_CS*tot_size_CS = %i\n", rank,count[nb_proc-1]+position[nb_proc-1],dim_CS*tot_size_CS);
@@ -384,9 +390,9 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
     *arg1 = Z4;
 
-    MPI_Barrier(comm);
-    printf("r: %i, HERE\n", rank);
-    fflush(stdout);
+    /* MPI_Barrier(comm); */
+    /* printf("r: %i, HERE\n", rank); */
+    /* fflush(stdout); */
     
     new_size = Orthogonalize_Space_loc(arg1,dim_CS,tot_size_CS,tol_svd,rank);
 
