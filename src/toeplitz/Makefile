@@ -3,7 +3,7 @@ MIDAPACK_OBJ=$(MIDAPACK_ROOT)/obj
 TOEPLITZ_OBJ=$(MIDAPACK_OBJ)/toeplitz
 
 GCC = gcc
-MPICC = cc
+MPICC = mpicc
 OPT =  -D W_MPI -D W_OPENMP -O3 -fPIC
 CC = $(MPICC) -qopenmp -g -Wall -Werror -fPIC $(OPT)
 
