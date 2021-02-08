@@ -4,7 +4,7 @@ MAPMAT_OBJ=$(MIDAPACK_OBJ)/mapmat
 
 GCC = gcc
 MPICC = cc
-OPT =  -D W_MPI -D W_OPENMP -O3
+OPT =  -D W_MPI -D W_OPENMP -O3 -fPIC
 CC = $(MPICC) -qopenmp -g -Wall -Werror -fPIC $(OPT)
 
 
