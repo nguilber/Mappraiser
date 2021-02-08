@@ -1,7 +1,7 @@
 DIR = $(HOME)/midapack
 MIDAPACK_ROOT=$(PREFIX)/midapack
 MIDAPACK_LIB=$(MIDAPACK_ROOT)/lib
-MPICC = mpicc
+MPICC = mpimpicc -fPIC
 OPT =  -D W_MPI -D W_OPENMP -O3
 CC = $(MPICC) -fopenmp -g -Wall -fPIC $(OPT)
 INC = -I$(DIR)/include
@@ -52,7 +52,7 @@ map: ./src/
 	make -C ./src/
 
 library:
-	mpicc -fPIC -fopenmp -shared $(MAPPRAISER_OBJ)/createToeplitz.o $(MAPPRAISER_OBJ)/precond.o $(MAPPRAISER_OBJ)/pcg_true.o $(MAPPRAISER_OBJ)/ecg.o $(MAPPRAISER_OBJ)/iofiles.o $(MAPPRAISER_OBJ)/mappraiser.o $(LIB) $(CFITSIO_LIB) $(LIBpreAlps) -o $(MAPPRAISER_LIB)/libmappraiser.so
+	mpimpicc -fPIC -fPIC -fopenmp -shared $(MAPPRAISER_OBJ)/createToeplitz.o $(MAPPRAISER_OBJ)/precond.o $(MAPPRAISER_OBJ)/pcg_true.o $(MAPPRAISER_OBJ)/ecg.o $(MAPPRAISER_OBJ)/iofiles.o $(MAPPRAISER_OBJ)/mappraiser.o $(LIB) $(CFITSIO_LIB) $(LIBpreAlps) -o $(MAPPRAISER_LIB)/libmappraiser.so
 
 ##############   u t i l s   #############
 
