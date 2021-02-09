@@ -110,6 +110,7 @@ def apply_mappraiser(
     comm,
     data,
     params,
+    detweights,
     signalname,
     noisename,
     time_comms=None,
@@ -136,6 +137,7 @@ def apply_mappraiser(
 
     mappraiser = OpMappraiser(
         params= params,
+        detweights = detweights,
         purge=True,
         name=signalname,
         noise_name = noisename,
