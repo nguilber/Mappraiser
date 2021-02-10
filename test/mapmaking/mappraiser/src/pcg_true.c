@@ -137,6 +137,8 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     // Build the unorthogonalized coarse space of the blocks on a proc
     Build_ALS_proc(A,Nm1,Z1,nb_defl,n,rank);
     // Build_ALS(A,Nm1,Z1,nb_defl,n,rank);
+
+    MPI_Barrier(comm);
     
     if (rank == 0) {
       printf("######## ALS built ##############\n");

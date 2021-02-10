@@ -581,7 +581,7 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   a_int N;
   a_int NEV = nb_defl;
   char *BMAT = "I";
-  int invert = 1;
+  int invert = 0;
   char *WHICH;
   if (invert == 0) {
     WHICH = "SM";
@@ -670,13 +670,18 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
 
 
 
-  N = 0;
+  N = Nm1.local_V_size;
 
-  for (i0 = 0; i0 < Nm1.nb_blocks_loc; ++i0) {
-    /* printf("r: %i, size of block %i : %i\n", rank,i0,Nm1.tpltzblocks[i0].n); */
-    /* fflush(stdout); */
+  /* for (i0 = 0; i0 < Nm1.nb_blocks_loc; ++i0) { */
+  /*   /\* printf("r: %i, size of block %i : %i\n", rank,i0,Nm1.tpltzblocks[i0].n); *\/ */
+  /*   /\* fflush(stdout); *\/ */
 
-    N += Nm1.tpltzblocks[i0].n;
+  /*   N += Nm1.tpltzblocks[i0].n; */
+  /* } */
+
+  if (rank == 0) {
+    printf("r: 0, N = %i\n", N);
+    fflush(stdout);
   }
   
   Build_ATA_bloc(A,Nm1,ATA,0,N,np,rank,i0);
@@ -688,8 +693,8 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   else {
     NCV = N;
   }
-  if (NCV < 150) {
-    NCV = 150;
+  if (NCV < 50) {
+    NCV = 50;
   }
   
   RESID = (double *) malloc(sizeof(double)*N);

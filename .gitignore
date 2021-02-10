@@ -40,7 +40,7 @@ test/mapmat/*
 test/toeplitz/*
 
 #ignore Makefiles (manually configured in each platform for now)
-Makefile
+**/Makefile
 src/mapmat/Makefile
 src/toeplitz/Makefile
 test/mapmaking/mappraiser/Makefile
