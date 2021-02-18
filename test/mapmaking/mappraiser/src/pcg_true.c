@@ -149,21 +149,21 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
     Check_Inf_NaN(Z1,nb_defl*n,rank);    
 
-    if (rank == 0) {
-      printf("######## Start Ortho ##############\n");
-    }
-    fflush(stdout);
+    /* if (rank == 0) { */
+    /*   printf("######## Start Ortho ##############\n"); */
+    /* } */
+    /* fflush(stdout); */
     
     arg1  = (double **) malloc(sizeof(double *));
     *arg1 = Z1;
     
-    // Orthogonalize the coarse space Z on a proc
-    new_size = Orthogonalize_Space_loc(arg1,n,nb_defl,tol_svd,rank);
+    /* // Orthogonalize the coarse space Z on a proc */
+    /* new_size = Orthogonalize_Space_loc(arg1,n,nb_defl,tol_svd,rank); */
 
-    if (rank == 0) {
-      printf("r: %i : Nb of vec in CS after loc orth. : %i\n", rank, new_size);
-      fflush(stdout);
-    }
+    /* if (rank == 0) { */
+    /*   printf("r: %i : Nb of vec in CS after loc orth. : %i\n", rank, new_size); */
+    /*   fflush(stdout); */
+    /* } */
       
     Z2 = *arg1;
 
@@ -174,10 +174,10 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
       printf("Z1 NULL\n");
     }
 
-    if (rank == 0) {
-      printf("######## End Ortho ##############\n");
-    }
-    fflush(stdout);
+    /* if (rank == 0) { */
+    /*   printf("######## End Ortho ##############\n"); */
+    /* } */
+    /* fflush(stdout); */
     
   }
   
@@ -483,7 +483,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
     stbmmProd(Nm1,pz);
 
-    TrMatVecProd(A,pz,pTnpz,0);
+    /* TrMatVecProd(A,pz,pTnpz,0); */
 
 /* // Apply the product A_i.T * v for a timestream of one block */
 /* int Apply_ATr_bloc(Mat *A, double *x, double *y, int size_y, int row_indice, int nb_rows) */
@@ -516,14 +516,14 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 /*   return 0; */
 /* } */
 
-    /* for (i1 = 0; i1 < Nm1.nb_blocks_loc; ++i1) { */
+    for (i1 = 0; i1 < Nm1.nb_blocks_loc; ++i1) {
 
-    /*   Apply_ATr_bloc(A,pz,pTnpz,n,row_indice,Nm1.tpltzblocks[i1].n); */
+      Apply_ATr_bloc(A,pz,pTnpz,n,row_indice,Nm1.tpltzblocks[i1].n);
 
-    /*   row_indice += Nm1.tpltzblocks[i1].n; */
+      row_indice += Nm1.tpltzblocks[i1].n;
       
       
-    /* } */
+    }
     
     /* norm = 0; */
 
