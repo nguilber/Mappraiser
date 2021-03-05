@@ -153,6 +153,7 @@ def apply_mappraiser(
     noisename,
     time_comms=None,
     telescope_data=None,
+    purge=True,
     verbose=True,
 ):
     """ Use libmappraiser to run unbiased map-making
@@ -175,7 +176,7 @@ def apply_mappraiser(
 
     mappraiser = OpMappraiser(
         params= params,
-        purge=True,
+        purge=purge,
         name=signalname,
         noise_name = noisename,
         conserve_memory=args.conserve_memory,
