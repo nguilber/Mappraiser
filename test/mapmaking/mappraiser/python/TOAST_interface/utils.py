@@ -58,21 +58,24 @@ def add_mappraiser_args(parser):
     )
     parser.add_argument("--bs_red", required=False, default = 0, type=np.int, help="Use dynamic search reduction: 0->OFF, 1->ON"
     )
-    parser.add_argument(
-        "--conserve-memory",
-        dest="conserve_memory",
-        required=False,
-        action="store_true",
-        help="Conserve memory when staging libMappraiser buffers [default]",
-    )
-    parser.add_argument(
-        "--no-conserve-memory",
-        dest="conserve_memory",
-        required=False,
-        action="store_false",
-        help="Do not conserve memory when staging libMappraiser buffers",
-    )
-    parser.set_defaults(conserve_memory=True)
+    try:
+        parser.add_argument(
+            "--conserve-memory",
+            dest="conserve_memory",
+            required=False,
+            action="store_true",
+            help="Conserve memory when staging libMappraiser buffers [default]",
+        )
+        parser.add_argument(
+            "--no-conserve-memory",
+            dest="conserve_memory",
+            required=False,
+            action="store_false",
+            help="Do not conserve memory when staging libMappraiser buffers",
+        )
+        parser.set_defaults(conserve_memory=True)
+    except argparse.ArgumentError:
+        pass
 
      # `nside` may already be added
     try:

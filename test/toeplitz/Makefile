@@ -1,12 +1,13 @@
-DIR = /global/homes/e/elbouha/midapack
+DIR = /global/homes/d/dbeck/software/midapack
 TOEPLITZ = $(DIR)/src/toeplitz/
 GCC = gcc
-# MPICC = /global/homes/e/elbouha/.conda/envs/hamzaenv/bin/mpicc
-MPICC = cc
-CC = $(MPICC) -qopenmp $(OPT)
-INC = -I$(DIR)/include -I/opt/cray/pe/fftw/3.3.6.2/haswell/include
+MPICC = /usr/common/software/intel/parallel_studio_xe_2020_cluster_edition/impi/2019.6.166/intel64/bin/mpicc
+CC = $(MPICC) -fopenmp $(OPT)
+INC = -I$(DIR)/include -I/global/cscratch1/sd/dbeck/software/fftw-3.3.7/include/
 LIB = -L$(DIR)/lib -lmidapack
-FFTW_LIB = -L/opt/cray/pe/fftw/3.3.6.2/haswell/lib -lfftw3 -lfftw3_threads
+FFTW_LIB = -lfftw3 -lfftw3_threads
+
+FFTW_LIB = -lfftw3 -lfftw3_threads
 FFTW     = -D FFTW_MULTITHREADING
 
 
@@ -15,9 +16,9 @@ SRC = ../../src/toeplitz/
 
 
 ##############   t e s t s   ############
-
+ 
 all:
-	make example
+	make example 
 
 example:
 	@echo "start compiling toeplitz examples ........"
@@ -30,14 +31,14 @@ example:
 #	@echo "start compiling toeplitz tests ........"
 #	make test_mpi_stmm
 
-mpi_stmm: $(SRC)
-	$(CC) testexple_mpi_stmm.c $(INC) $(LIB) $(FFTW_LIB) -lm -o testexple_mpi_stmm
+mpi_stmm: $(SRC) 
+	$(CC) testexple_mpi_stmm.c $(INC) $(LIB) $(FFTW_LIB) -o testexple_mpi_stmm
 
 mpi_stbmm: $(SRC)
-	$(CC) testexple_mpi_stbmm.c $(INC) $(LIB) $(FFTW_LIB) -lm -o testexple_mpi_stbmm
+	$(CC) testexple_mpi_stbmm.c $(INC) $(LIB) $(FFTW_LIB) -o testexple_mpi_stbmm
 
-mpi_gstbmm: $(SRC)
-	$(CC) testexple_mpi_gstbmm.c $(INC) $(LIB) $(FFTW_LIB) -lm -o testexple_mpi_gstbmm
+mpi_gstbmm: $(SRC) 
+	$(CC) testexple_mpi_gstbmm.c $(INC) $(LIB) $(FFTW_LIB) -o testexple_mpi_gstbmm
 
 
 
@@ -45,3 +46,4 @@ mpi_gstbmm: $(SRC)
 
 clean:
 	rm -f *.o ;
+

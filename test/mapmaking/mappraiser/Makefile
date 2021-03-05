@@ -1,9 +1,9 @@
-DIR = $(HOME)/midapack
-MIDAPACK_ROOT=$(PREFIX)/midapack
+DIR = $(HOME)/software/midapack
+MIDAPACK_ROOT=/global/cscratch1/sd/dbeck/software/midapack
 MIDAPACK_LIB=$(MIDAPACK_ROOT)/lib
-MPICC = cc
-OPT =  -D W_MPI -D W_OPENMP -O3
-CC = $(MPICC) -qopenmp -g -Wall -fPIC $(OPT)
+MPICC = mpicc
+OPT =  -D W_MPI -D W_OPENMP -O3 -I/global/cscratch1/sd/dbeck/software/fftw-3.3.7/include
+CC = $(MPICC) -fopenmp -g -Wall -fPIC $(OPT)
 INC = -I$(DIR)/include
 LIB = -L$(MIDAPACK_LIB) -lmidapack
 MAPPRAISER_ROOT=$(PREFIX)/mappraiser
@@ -14,7 +14,7 @@ MAPPRAISER_LIB=$(MAPPRAISER_ROOT)/lib
 CPLM_CORE     = utils/cplm_core
 CPLMDIR      = utils/cplm_light
 CPLM_V0_DIR  = utils/cplm_v0
-preAlpsDIR = $(HOME)/preAlps
+preAlpsDIR = $(HOME)/software/preAlps
 
 LIBpreAlps = -L$(preAlpsDIR)/lib/ -lpreAlps_release -lcplm_light -lcplm_v0 -lcplm_core
 INCpreAlps = -I$(preAlpsDIR)/$(CPLM_CORE) -I$(preAlpsDIR)/$(CPLMDIR) -I$(preAlpsDIR)/$(CPLM_V0_DIR) -I$(preAlpsDIR)/utils -I$(preAlpsDIR)/src/preconditioners -I$(preAlpsDIR)/src/solvers
@@ -52,7 +52,7 @@ map: ./src/
 	make -C ./src/
 
 library:
-	cc -qopenmp -shared $(MAPPRAISER_OBJ)/createToeplitz.o $(MAPPRAISER_OBJ)/precond.o $(MAPPRAISER_OBJ)/pcg_true.o $(MAPPRAISER_OBJ)/ecg.o $(MAPPRAISER_OBJ)/iofiles.o $(MAPPRAISER_OBJ)/mappraiser.o $(LIB) $(CFITSIO_LIB) $(LIBpreAlps) -o $(MAPPRAISER_LIB)/libmappraiser.so
+	mpicc -fopenmp -shared $(MAPPRAISER_OBJ)/createToeplitz.o $(MAPPRAISER_OBJ)/precond.o $(MAPPRAISER_OBJ)/pcg_true.o $(MAPPRAISER_OBJ)/ecg.o $(MAPPRAISER_OBJ)/iofiles.o $(MAPPRAISER_OBJ)/mappraiser.o $(LIB) $(CFITSIO_LIB) $(LIBpreAlps) -o $(MAPPRAISER_LIB)/libmappraiser.so
 
 ##############   u t i l s   #############
 

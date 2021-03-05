@@ -4,9 +4,9 @@ TEMPLATES_OBJ=$(MIDAPACK_OBJ)/templates
 
 GCC = gcc
 # MPICC = /global/homes/e/elbouha/.conda/envs/hamzaenv/bin/mpicc
-MPICC = cc
-OPT =  -D W_MPI -D W_OPENMP -O3
-CC = $(MPICC) -qopenmp -g -Wall -fPIC $(OPT)
+MPICC = mpicc
+OPT =  -D W_MPI -D W_OPENMP -O3 -fPIC
+CC = $(MPICC) -fopenmp -g -Wall -fPIC $(OPT)
 # FFTW_INC = -I/opt/cray/pe/fftw/3.3.6.3/haswell/include
 # linking MKL library
 MKL_DIR=/opt/intel/mkl
