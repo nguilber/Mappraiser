@@ -580,7 +580,7 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   a_int ID0 = 0;
   a_int N;
   a_int NEV = nb_defl;
-  char *BMAT = "G";
+  char *BMAT = "I";
   int invert = 1;
   char *WHICH;
   if (invert == 0) {
@@ -604,7 +604,7 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   a_int ISHIFT = 1;
   a_int maxiter_arnoldi = 200;
   a_int NB = 1;
-  a_int MODE = 2;
+  a_int MODE = 1;
   IPARAM[0] = ISHIFT;
   IPARAM[2] = maxiter_arnoldi;
   IPARAM[3] = NB;
@@ -781,7 +781,6 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
     /* printf("r: %i, ARPACK status : iteration = %i, residual = %f, ID0 = %i, INFO = %i\n", rank,IPARAM[2],norm_residual,ID0,INFO); */
     /* fflush(stdout); */
 
-
     for (i0 = 0; i0 < N; ++i0) {
       x[i0] = WORKD[IPNTR[0]-1+i0];
     }
@@ -800,37 +799,9 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
       /* 	} */
       /* } */
 
-
-      row_indice = 0;
-
-      for (i1 = 0; i1 < Nm1.nb_blocks_loc; ++i1) {
-
-	for (i0 = row_indice; i0 < row_indice+Nm1.tpltzblocks[i1].n; ++i0) {
-	  x[i0] *= d[i1];
-
-	  /* printf("r: %i, x[i0] = %f\n", rank,x[i0]); */
-	  /* fflush(stdout); */
-	  
-	}
-
-	row_indice += Nm1.tpltzblocks[i1].n;
-      }
-      
-
-	  
-
-      /* MatVecProd(A,x,xx,0); */
-
-      /* stbmmProd(Nm1,xx); */
-
-      /* TrMatVecProd(A,xx,x,0); */
-
-      for (i0 = 0; i0 < N; ++i0) {
-	WORKD[IPNTR[0]-1+i0] = x[i0];
-	WORKD[IPNTR[1]-1+i0] = x[i0];
-      }
-
       // Faire un CG de taille n=3n_p pour résoudre P_i\tr N_i\inv P_i Y = x
+
+      norm_b = 0;
 
       for (i0 = 0; i0 < N; ++i0) {
       	norm_b += x[i0]*x[i0];
@@ -860,6 +831,7 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
       dcg_check(&N,xx,x,&RCI_request,ipar,dpar,tmp);
 
       RCI_request = 1;
+
       
       while (RCI_request != 0) {
 
@@ -899,35 +871,49 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
 	
       }
 
+      norm_b = 0;
+
+      for (i1 = 0; i1 < N; ++i1) {
+	norm_b += xx[i1]*xx[i1];
+      }
+
+      norm_b = sqrt(norm_b);
+
+      printf("r: %i, BEFORE norm_b = %f\n", rank,norm_b);
+      fflush(stdout);
+      
+      row_indice = 0;
+
+      for (i1 = 0; i1 < Nm1.nb_blocks_loc; ++i1) {
+
+	for (i0 = row_indice; i0 < row_indice+Nm1.tpltzblocks[i1].n; ++i0) {
+	  xx[i0] *= d[i1];
+
+	  /* printf("r: %i, x[i0] = %f\n", rank,x[i0]); */
+	  /* fflush(stdout); */
+	  
+	}
+
+	row_indice += Nm1.tpltzblocks[i1].n;
+      }
+
       /* printf("r: %i, CG converged : RCI_request = %i, iteration = %i\n", rank,RCI_request,ipar[3]); */
       /* fflush(stdout); */
 
+      norm_b = 0;
+
       for (i1 = 0; i1 < N; ++i1) {
+	norm_b += xx[i1]*xx[i1];
 	WORKD[IPNTR[1]-1+i1] = xx[i1];
       }
+
+      norm_b = sqrt(norm_b);
+
+      printf("r: %i, AFTER norm_b = %f\n", rank,norm_b);
+      fflush(stdout);
       
     }
-    else if (ID0 == 2) {
-
-      /* MatVecProd(A,x,xx,0); */
-
-      stbmmProd(Nm1,x);
-
-      /* row_indice = 0; */
-
-      /* for (i1 = 0; i1 < Nm1.nb_blocks_loc; ++i1) { */
-	
-      /* 	Apply_ATr_bloc(A,xx,x,n,row_indice,Nm1.tpltzblocks[i1].n); */
-	
-      /* 	row_indice += Nm1.tpltzblocks[i1].n; */
-      /* } */
-
-      for (i1 = 0; i1 < N; ++i1) {
-	WORKD[IPNTR[1]-1+i1] = x[i1];
-      }
-      
-    }
-    else if (ID0 != 1 && ID0 != -1 && ID0 != 2 && ID0 != 99) {
+    else if (ID0 != 1 && ID0 != -1 && ID0 != 99) {
       printf("r: %i, problem with ID0 = %i\n", rank,ID0);
       fflush(stdout);
     }
