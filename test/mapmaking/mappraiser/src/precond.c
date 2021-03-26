@@ -540,6 +540,39 @@ int Apply_ATA_bloc(Mat *A, double *ATA, double *y, double *z, int np)
   return 0;
 }
 
+// Apply diag(N_i^{-1}) to a vector where N_i^{-1} is the local block Toeplitz matrix
+int Apply_diagN(Tpltz Nm1, double *x, int invert)
+{
+  
+  int nb_bloc = Nm1.nb_blocks_loc;
+  int index = 0;
+  int size_bloc;
+  int i0,i1;
+  double d;
+
+  for (i0 = 0; i0 < nb_bloc; ++i0) {
+    size_bloc = Nm1.tpltzblocks[i0].n;
+
+    d = Nm1.tpltzblocks[i0].T_block[0];
+
+    if (invert == 0) {
+      for (i1 = index; i1 < index+size_bloc; ++i1) {  
+	x[i1] *= d;
+      }
+    }
+    else {
+      for (i1 = index; i1 < index+size_bloc; ++i1) {  
+	x[i1] /= d;
+      }
+    }
+        
+    index += size_bloc;
+
+  }
+
+  return 0;
+}
+
 // Get the fourier mode of order index_mode through fftw3 package
 int get_Fourier_mode(fftw_complex *in, fftw_complex *out, int size, int index_mode)
 {
@@ -572,7 +605,9 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   /* fftw_complex *out;                  // Vector to store output of the FFT */
   // double *diagNm1;                    // Vector to store the diagonal of Nm1
   double *x;                          // Vector to store eigen vector w.r.t to one bloc
-  // double *xx;
+  double *xx;
+  double *xxx;
+  double *xxxx;
   double *y;                          // Vector to store A_i.T * x
   double *z;                          // Vector to store (A_i.T * A_i)^{-1} * y                                             
   int i0,i1,i2,i3,i4;                 // loop indices
@@ -580,7 +615,7 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   a_int ID0 = 0;
   a_int N;
   a_int NEV = nb_defl;
-  char *BMAT = "I";
+  char *BMAT = "G";
   int invert = 1;
   char *WHICH;
   if (invert == 0) {
@@ -604,7 +639,7 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   a_int ISHIFT = 1;
   a_int maxiter_arnoldi = 200;
   a_int NB = 1;
-  a_int MODE = 1;
+  a_int MODE = 3;
   IPARAM[0] = ISHIFT;
   IPARAM[2] = maxiter_arnoldi;
   IPARAM[3] = NB;
@@ -616,6 +651,7 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   a_int INFO = 0;
   double norm_residual;
   double norm_residual_0;
+  double sigma = 0.8; // 1-1e-5;
 
   /* (RVEC, HOWMANY, SELECT, D, Z, SIGMA, BMAT, N, WHICH, NEV, TOL, RESID, NCV, V, IPARAM, IPNTR, WORKD, WORKL, INFO) */
 
@@ -641,7 +677,6 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   a_int LDZ;
   double SIGMA;
 
-  double *xx;
   int RCI_request;
   int *ipar;
   ipar = (int *) malloc(sizeof(int)*128);
@@ -717,6 +752,8 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
   double *b = (double *) malloc(sizeof(double)*N);
 
   xx = (double *) calloc(Nm1.local_V_size,sizeof(double));
+  xxx = (double *) calloc(Nm1.local_V_size,sizeof(double));
+  xxxx = (double *) calloc(Nm1.local_V_size,sizeof(double));
   tmp = (double *) malloc(sizeof(double)*N*4);
   tmp2 = (double *) malloc(sizeof(double)*N);
   
@@ -811,6 +848,8 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
       
       /* printf("r: %i, norm rhs = %f\n", rank,norm_b); */
       /* fflush(stdout); */
+
+      stbmmProd(Nm1,x);
       
       dcg_init(&N,xx,x,&RCI_request,ipar,dpar,tmp);
       
@@ -831,7 +870,6 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
       dcg_check(&N,xx,x,&RCI_request,ipar,dpar,tmp);
 
       RCI_request = 1;
-
       
       while (RCI_request != 0) {
 
@@ -842,10 +880,13 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
 	  /* MatVecProd(A,tmp,xx,0); */
 
 	  for (i0 = 0; i0 < N; ++i0) {
-	    xx[i0] = tmp[i0];
+	    xxxx[i0] = tmp[i0];
+	    xxx[i0] = tmp[i0];
 	  }
 
-	  stbmmProd(Nm1,xx);
+	  stbmmProd(Nm1,xxxx);
+
+	  Apply_diagN(Nm1,xxx,0);
 
 	  /* row_indice = 0; */
 
@@ -857,7 +898,7 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
 	  /* } */
 
 	  for (i1 = 0; i1 < N; ++i1) {
-	    tmp[N+i1] = xx[i1];
+	    tmp[N+i1] = xxx[i1] - sigma*xxxx[i1];
 	  }
 	  
 	}
@@ -879,24 +920,9 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
 
       norm_b = sqrt(norm_b);
 
-      printf("r: %i, BEFORE norm_b = %f\n", rank,norm_b);
-      fflush(stdout);
+      /* printf("r: %i, BEFORE norm_b = %f\n", rank,norm_b); */
+      /* fflush(stdout); */
       
-      row_indice = 0;
-
-      for (i1 = 0; i1 < Nm1.nb_blocks_loc; ++i1) {
-
-	for (i0 = row_indice; i0 < row_indice+Nm1.tpltzblocks[i1].n; ++i0) {
-	  xx[i0] *= d[i1];
-
-	  /* printf("r: %i, x[i0] = %f\n", rank,x[i0]); */
-	  /* fflush(stdout); */
-	  
-	}
-
-	row_indice += Nm1.tpltzblocks[i1].n;
-      }
-
       /* printf("r: %i, CG converged : RCI_request = %i, iteration = %i\n", rank,RCI_request,ipar[3]); */
       /* fflush(stdout); */
 
@@ -909,8 +935,19 @@ int Build_ALS_proc(Mat *A, Tpltz Nm1, double *CS, int nb_defl, int n, int rank)
 
       norm_b = sqrt(norm_b);
 
-      printf("r: %i, AFTER norm_b = %f\n", rank,norm_b);
-      fflush(stdout);
+      /* printf("r: %i, AFTER norm_b = %f\n", rank,norm_b); */
+      /* fflush(stdout); */
+      
+    }
+    else if (ID0 == 2) {
+
+      stbmmProd(Nm1,x);
+      
+      for (i1 = 0; i1 < N; ++i1) {
+	WORKD[IPNTR[1]-1+i1] = x[i1];
+      }
+
+      
       
     }
     else if (ID0 != 1 && ID0 != -1 && ID0 != 99) {
