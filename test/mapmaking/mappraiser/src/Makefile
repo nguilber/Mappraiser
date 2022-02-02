@@ -1,4 +1,4 @@
-DIR = $(HOME)/midapack
+DIR = $(HOME)/dev/Midapack/midapack
 MIDAPACK_ROOT=$(PREFIX)/midapack
 MIDAPACK_LIB=$(MIDAPACK_ROOT)/lib
 MPICC = cc
@@ -14,7 +14,7 @@ MAPPRAISER_LIB=$(MAPPRAISER_ROOT)/lib
 CPLM_CORE     = utils/cplm_core
 CPLMDIR      = utils/cplm_light
 CPLM_V0_DIR  = utils/cplm_v0
-preAlpsDIR = $(HOME)/preAlps
+preAlpsDIR = $(HOME)/dev/Midapack/preAlps
 
 LIBpreAlps = -L$(preAlpsDIR)/lib/ -lpreAlps_release -lcplm_light -lcplm_v0 -lcplm_core
 INCpreAlps = -I$(preAlpsDIR)/$(CPLM_CORE) -I$(preAlpsDIR)/$(CPLMDIR) -I$(preAlpsDIR)/$(CPLM_V0_DIR) -I$(preAlpsDIR)/utils -I$(preAlpsDIR)/src/preconditioners -I$(preAlpsDIR)/src/solvers

@@ -45,6 +45,22 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
     FILE *fp;
 
+    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    printf("Number of local Tpltz Blocks : %i \n", Nm1.nb_blocks_loc);
+    // for (int iblk = 0; iblk < Nm1.nb_blocks_loc; iblk++) {
+    //   double sumtpltz = 0.;
+    //   for (int i = 0; i < Nm1.tpltzblocks[iblk].lambda; i++) {
+    //     sumtpltz += (Nm1.tpltzblocks[iblk].T_block)[i];
+    //   }
+    //   printf("Half Bandwidth  : %i \n", Nm1.tpltzblocks[iblk].lambda);
+    //   printf("Norm of a Toeplitz Block %f \n", sumtpltz);
+    // }
+    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
     MPI_Comm_rank(A->comm, &rank);
     MPI_Comm_size(A->comm, &size);
     m = A->m;

@@ -133,9 +133,9 @@ int define_blocksize(int n, int lambda, int bs_flag, int fixed_bs)
   int min_bs;  //minimum block size used for the computation
   int min_pow2;  //minimum power of two index used for the block size computation
 
-  //cheating
-//  bs_flag = 5;//1;//5;
-//  fixed_bs = pow(2,15);  //2^14 winner because smaller block than 2^15 (as same speed)
+  //  cheating
+  //  bs_flag = 5;//1;//5;
+  //  fixed_bs = pow(2,15);  //2^14 winner because smaller block than 2^15 (as same speed)
 
   if (bs_flag==1) {
     bs = fixed_bs;

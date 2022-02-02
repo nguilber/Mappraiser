@@ -428,7 +428,11 @@ if (nb_blocks_rank == 1) {
 
   //init Toeplitz arrays
   tpltz_init(nnew[id], tpltzblocks[id].lambda, &nfft, &blocksize, &T_fft, (tpltzblocks[id].T_block), &V_fft, &V_rfft, &plan_f, &plan_b, flag_stgy);
-
+  // double sumtpltz = 0.;
+  // for (int i = 0; i < tpltzblocks[id].lambda; i++) {
+  //   sumtpltz += (tpltzblocks[id].T_block)[i];
+  // }
+  // fprintf(file, "Norm of a Toeplitz Block %f \n", sumtpltz);
   //Toeplitz computation
   if(PRINT_RANK==0 && VERBOSE>2)
     fprintf(file, "[%d] Before stmm_main call : nfft = %d, blocksize = %d\n", rank, nfft, blocksize);

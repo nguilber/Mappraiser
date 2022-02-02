@@ -1,6 +1,6 @@
 PROJECT = Midapack_
 VERSION = 1.1b
-DIR = $(HOME)/midapack
+DIR = $(HOME)/dev/Midapack/midapack
 DIRTAR = export_tar
 LIBNAME = libmidapack
 MIDAPACK_ROOT=$(PREFIX)/midapack
