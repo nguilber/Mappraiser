@@ -40,31 +40,49 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     struct Precond *p = NULL;
     double *pixpond;
 
+
     // if we want to use the true norm to compute the residual
     int TRUE_NORM = 1;  //0: No ; 1: Yes
 
     FILE *fp;
 
-    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    printf("Number of local Tpltz Blocks : %i \n", Nm1.nb_blocks_loc);
-    // for (int iblk = 0; iblk < Nm1.nb_blocks_loc; iblk++) {
-    //   double sumtpltz = 0.;
-    //   for (int i = 0; i < Nm1.tpltzblocks[iblk].lambda; i++) {
-    //     sumtpltz += (Nm1.tpltzblocks[iblk].T_block)[i];
-    //   }
-    //   printf("Half Bandwidth  : %i \n", Nm1.tpltzblocks[iblk].lambda);
-    //   printf("Norm of a Toeplitz Block %f \n", sumtpltz);
-    // }
-    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
     MPI_Comm_rank(A->comm, &rank);
     MPI_Comm_size(A->comm, &size);
     m = A->m;
 
+    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++AAAAAAAAAAAAAAAAAAAAA
+    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++AAAAAAAAAAAAAAAAAAAAA
+    double TplzBlocknorms[Nm1.nb_blocks_tot];
+    double TplzBlocknormsLoc[Nm1.nb_blocks_loc];
+    for (int iblk = 0; iblk < Nm1.nb_blocks_loc; iblk++) {
+      TplzBlocknormsLoc[iblk] = 0.;
+      for (int i = 0; i < Nm1.tpltzblocks[iblk].lambda; i++) {
+        TplzBlocknormsLoc[iblk] += (Nm1.tpltzblocks[iblk].T_block)[i]*(Nm1.tpltzblocks[iblk].T_block)[i];
+      }
+      TplzBlocknormsLoc[iblk] = sqrt(TplzBlocknormsLoc[iblk]*Nm1.tpltzblocks[iblk].n);
+    }
+    int vec_nb_blocks[size];
+    int displacements[size+1];
+    displacements[0] = 0;
+    MPI_Gather( &Nm1.nb_blocks_loc, 1, MPI_INT, vec_nb_blocks, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    for (int i = 0; i < size; i++) {
+      displacements[i+1] = displacements[i] + vec_nb_blocks[i];
+    }
+    MPI_Gatherv(TplzBlocknormsLoc, Nm1.nb_blocks_loc, MPI_DOUBLE, TplzBlocknorms, vec_nb_blocks, displacements, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+    if (rank == 0) {
+      char filename[256];
+      sprintf(filename,"%s/Tplzblknormfile_%s.dat", outpath, ref);
+      fp = fopen(filename,"wb");
+      for (int iblk = 0; iblk < Nm1.nb_blocks_tot; iblk++) {
+        double normw = TplzBlocknorms[iblk];
+        fwrite(&normw, sizeof(double), 1, fp);
+      }
+      fflush(stdout);
+    }
+    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++AAAAAAAAAAAAAAAAAAAAA
+    // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++AAAAAAAAAAAAAAAAAAAAA
     st = MPI_Wtime();
 
     if (Z_2lvl == 0) Z_2lvl = size;
@@ -253,7 +271,6 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
     if (rank == 0)
         printf("--> g2pix = %e\n", g2pix);
-
     free(h);
     free(g);
     free(gp);
