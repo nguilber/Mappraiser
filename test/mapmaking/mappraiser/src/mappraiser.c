@@ -77,7 +77,12 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   //Pointing matrix init
   st=MPI_Wtime();
   A.trash_pix =0;
-  MatInit( &A, m, Nnz, pix, pixweights, pointing_commflag, comm);
+  int* shift = (int*) malloc(sizeof(int)*(nb_blocks_loc+1));
+  shift[0] = 0;
+  for (int iblk = 0; iblk < nb_blocks_loc; iblk++) {
+    shift[iblk+1] = shift[iblk] + ((int *)local_blocks_sizes)[iblk];
+  }
+  MatInit( &A, m, Nnz, pix, pixweights, pointing_commflag, shift, comm);
   t=MPI_Wtime();
   if (rank==0) {
     printf("[rank %d] Initializing pointing matrix time=%lf \n", rank, t-st);
@@ -156,7 +161,10 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   defineBlocks_avg(tpltzblocks, invtt, nb_blocks_loc, local_blocks_sizes, lambda_block_avg, id0 );
   defineTpltz_avg( &Nm1, nrow, 1, mcol, tpltzblocks, nb_blocks_loc, nb_blocks_tot, id0, local_V_size, flag_stgy, comm);
 
+  int nbsamples;
+  int* sampleIdx = (int*) malloc( sizeof(int)* nb_blocks_loc);
   //print Toeplitz parameters for information
+  nbsamples = prepare_Rand_GLS(outpath, ref, &A, Nm1, signal, noise, cond, sampleIdx);
   if (rank==0) {
     printf("[rank %d] Noise model: Banded block Toeplitz, half bandwidth = %d \n", rank, lambda_block_avg);
   }
@@ -169,7 +177,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   st=MPI_Wtime();
   // Conjugate Gradient
   if(solver == 0)
-    PCG_GLS_true(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, precond, Z_2lvl);
+    PCG_GLS_true(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, precond, Z_2lvl, nbsamples, sampleIdx);
   else if (solver == 1)
     ECG_GLS(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, enlFac, ortho_alg, bs_red);
   else {
@@ -322,6 +330,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   free(cond);
   free(lhits);
   free(tpltzblocks);
+  free(sampleIdx);
   MPI_Barrier(comm);
   t=MPI_Wtime();
   if (rank==0) {

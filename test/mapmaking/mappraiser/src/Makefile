@@ -50,6 +50,7 @@ mappraiser:
 	make $(MAPPRAISER_OBJ)/createToeplitz.o \
 	$(MAPPRAISER_OBJ)/precond.o \
 	$(MAPPRAISER_OBJ)/pcg_true.o \
+	$(MAPPRAISER_OBJ)/blkleveragescore.o \
 	$(MAPPRAISER_OBJ)/ecg.o \
 	$(MAPPRAISER_OBJ)/iofiles.o \
 	$(MAPPRAISER_OBJ)/mappraiser.o \
@@ -61,6 +62,9 @@ $(MAPPRAISER_OBJ)/precond.o: precond.c
 	$(CC) -c $< $(INC) $(LIB) -o $@
 
 $(MAPPRAISER_OBJ)/pcg_true.o: pcg_true.c
+	$(CC) -c $< $(INC) $(LIB) -o $@
+
+$(MAPPRAISER_OBJ)/blkleveragescore.o: blkleveragescore.c
 	$(CC) -c $< $(INC) $(LIB) -o $@
 
 $(MAPPRAISER_OBJ)/ecg.o: ecg.c

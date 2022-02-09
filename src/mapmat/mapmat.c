@@ -40,13 +40,13 @@
     @param comm MPI communicator
     @ingroup matmap_group11
     @sa MatFree */
-int MatInit(Mat *A, int m, int nnz, int *indices, double *values, int flag
+int MatInit(Mat *A, int m, int nnz, int *indices, double *values, int flag, int *shift
 #ifdef W_MPI
 , MPI_Comm comm
 #endif
 ){
   int err;
-  MatSetIndices(A, m, nnz, indices);
+  MatSetIndices(A, m, nnz, indices, shift);
 
   MatSetValues(A, m, nnz, values);
 
@@ -68,10 +68,11 @@ int MatInit(Mat *A, int m, int nnz, int *indices, double *values, int flag
     @param indices input tab
     @return void
     @ingroup matmap_group11*/
-void MatSetIndices(Mat *A, int m, int nnz, int *indices){
-  A->m    = m;				// set number of local rows
-  A->nnz  = nnz;        		// set number of non-zero values per row
-  A->indices = indices;			// point to indices
+void MatSetIndices(Mat *A, int m, int nnz, int *indices, int* shift){
+  A->m       = m;				  // set number of local rows
+  A->nnz     = nnz;       // set number of non-zero values per row
+  A->indices = indices;		// point to indices
+  A->shift   = shift;     // point to shift from block to block
 }
 
 
@@ -85,9 +86,9 @@ void MatSetIndices(Mat *A, int m, int nnz, int *indices){
     @ingroup matmap_group11*/
 void MatSetValues(Mat *A, int m, int nnz, double *values){
   int err;
-  A->m    = m;				// set number of local rows
-  A->nnz  = nnz;        		// set number of non-zero values per row
-  A->values  = values;			// point to values
+  A->m       = m;				// set number of local rows
+  A->nnz     = nnz;     // set number of non-zero values per row
+  A->values  = values;	// point to values
 }
 
 
@@ -653,6 +654,51 @@ int MatVecProd(Mat *A, double *x, double* y, int pflag){
         y[e] += A->values[i+j] * x[A->indices[i+j]];
       }
       e++;
+    }
+  }
+  return 0;
+};
+
+/** Perform matrix-vector multiplication with omitted Toeplitz blocks, \f$y \leftarrow A x\f$.
+    @param A pointer to a Mat
+    @param x input vector (overlapped)
+    @param y output vector (distributed)
+    @ingroup matmap_group11
+    @ingroup matmap_group12a */
+int MatVecProdwGaps(Mat *A, double *x, double* y, int pflag,  int *blksamples, int nbsamples){
+  int i, j, e;
+  for(i=0; i<A->m; i++) 					//
+      y[i] = 0.0;
+
+  e=0;
+  if(A->trash_pix){
+    for(int iblk=0; iblk < nbsamples; iblk++)
+    {
+      printf(" mmmmmmmmmmmmmmmmmmmmm    = %i\n", A->shift[blksamples[iblk]]);
+      printf(" mmmmmmmmmmmmmmmmmmmmm    = %i\n", blksamples[iblk]);
+      int begblk = A->shift[blksamples[iblk]  ];
+      int endblk = A->shift[blksamples[iblk]+1];
+      for (i = begblk; i < endblk; i++) {
+        if(A->indices[i*A->nnz] != 0){
+          for(j=0; j<A->nnz; j++){					//
+            y[i] += A->values[i*A->nnz+j] * x[A->indices[i*A->nnz+j]-(A->nnz)];
+          }
+        }
+      }
+    }
+  }
+  else{
+    for(int iblk=0; iblk < nbsamples; iblk++)
+    {
+      printf(" mmmmmmmmmmmmmmmmmmmmm    = %i\n", A->shift[blksamples[iblk]]);
+      printf(" mmmmmmmmmmmmmmmmmmmmm    = %i\n", blksamples[iblk]);
+      int begblk = A->shift[blksamples[iblk]  ];
+      int endblk = A->shift[blksamples[iblk]+1];
+      for (i = begblk; i < endblk; i++) {
+        for(j=0; j<A->nnz; j++){
+          y[i] += A->values[i*A->nnz+j] * x[A->indices[i*A->nnz+j]];
+        }
+      }
     }
   }
   return 0;

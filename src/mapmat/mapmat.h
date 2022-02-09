@@ -50,6 +50,7 @@ typedef struct {
   double	*values;		// non-zero values tab; size = m * nnz
   int *id0pix;    // index of the first time sample pointing to each pixel (no nnz repeat factor)
   int *ll;      // linked list of time samples indexes linked by pixels
+  int *shift;   // shift array to move from a scan to another (size number of Toeplitz blocks)
   //--------local shaping---------------
   int		lcount;
   int		*lindices;		// local indices tab (monotony with global numbering); size = lcount
@@ -64,13 +65,13 @@ typedef struct {
 }Mat;
 
 
-int MatInit(Mat *A, int m, int nnz, int *indices, double *values, int flag
+int MatInit(Mat *A, int m, int nnz, int *indices, double *values, int flag, int* shift
 #ifdef W_MPI
 , MPI_Comm comm
 #endif
 );
 
-void MatSetIndices(Mat *A, int m, int nnz, int *indices);
+void MatSetIndices(Mat *A, int m, int nnz, int *indices, int* shift);
 
 void MatSetValues(Mat *A, int m, int nnz, double *values);
 
@@ -83,6 +84,7 @@ int MatComShape(Mat *A, int flag,  MPI_Comm comm);
 #endif
 
 int MatVecProd(Mat *A, double *x, double *y, int pflag);
+int MatVecProdwGaps(Mat *A, double *x, double *y, int pflag, int *blksamples, int nbsamples);
 
 int TrMatVecProd(Mat *A, double *y, double* x, int pflag);
 
