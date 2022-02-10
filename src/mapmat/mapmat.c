@@ -40,13 +40,13 @@
     @param comm MPI communicator
     @ingroup matmap_group11
     @sa MatFree */
-int MatInit(Mat *A, int m, int nnz, int *indices, double *values, int flag, int *shift
+int MatInit(Mat *A, int m, int nnz, int *indices, double *values, int flag
 #ifdef W_MPI
 , MPI_Comm comm
 #endif
 ){
   int err;
-  MatSetIndices(A, m, nnz, indices, shift);
+  MatSetIndices(A, m, nnz, indices);
 
   MatSetValues(A, m, nnz, values);
 
@@ -68,11 +68,11 @@ int MatInit(Mat *A, int m, int nnz, int *indices, double *values, int flag, int 
     @param indices input tab
     @return void
     @ingroup matmap_group11*/
-void MatSetIndices(Mat *A, int m, int nnz, int *indices, int* shift){
+void MatSetIndices(Mat *A, int m, int nnz, int *indices){
   A->m       = m;				  // set number of local rows
   A->nnz     = nnz;       // set number of non-zero values per row
   A->indices = indices;		// point to indices
-  A->shift   = shift;     // point to shift from block to block
+  // A->shift   = shift;     // point to shift from block to block
 }
 
 
@@ -674,8 +674,8 @@ int MatVecProdwGaps(Mat *A, double *x, double* y, int pflag,  int *blksamples, i
   if(A->trash_pix){
     for(int iblk=0; iblk < nbsamples; iblk++)
     {
-      printf(" mmmmmmmmmmmmmmmmmmmmm    = %i\n", A->shift[blksamples[iblk]]);
-      printf(" mmmmmmmmmmmmmmmmmmmmm    = %i\n", blksamples[iblk]);
+      // printf(" mmmmmmmmmmmmmmmmmmmmm    = %i\n", A->shift[blksamples[iblk]]);
+      // printf(" mmmmmmmmmmmmmmmmmmmmm    = %i\n", blksamples[iblk]);
       int begblk = A->shift[blksamples[iblk]  ];
       int endblk = A->shift[blksamples[iblk]+1];
       for (i = begblk; i < endblk; i++) {
@@ -690,8 +690,8 @@ int MatVecProdwGaps(Mat *A, double *x, double* y, int pflag,  int *blksamples, i
   else{
     for(int iblk=0; iblk < nbsamples; iblk++)
     {
-      printf(" mmmmmmmmmmmmmmmmmmmmm    = %i\n", A->shift[blksamples[iblk]]);
-      printf(" mmmmmmmmmmmmmmmmmmmmm    = %i\n", blksamples[iblk]);
+      // printf(" mmmmmmmmmmmmmmmmmmmmm    = %i\n", A->shift[blksamples[iblk]]);
+      // printf(" mmmmmmmmmmmmmmmmmmmmm    = %i\n", blksamples[iblk]);
       int begblk = A->shift[blksamples[iblk]  ];
       int endblk = A->shift[blksamples[iblk]+1];
       for (i = begblk; i < endblk; i++) {

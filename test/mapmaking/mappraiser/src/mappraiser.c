@@ -77,12 +77,13 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   //Pointing matrix init
   st=MPI_Wtime();
   A.trash_pix =0;
-  int* shift = (int*) malloc(sizeof(int)*(nb_blocks_loc+1));
-  shift[0] = 0;
+  int *Locshift = (int *) malloc((nb_blocks_loc+1) * sizeof(int));
+  Locshift[0] = 0;
   for (int iblk = 0; iblk < nb_blocks_loc; iblk++) {
-    shift[iblk+1] = shift[iblk] + ((int *)local_blocks_sizes)[iblk];
+    Locshift[iblk+1] = Locshift[iblk] + ((int *)local_blocks_sizes)[iblk];
   }
-  MatInit( &A, m, Nnz, pix, pixweights, pointing_commflag, shift, comm);
+  A.shift = Locshift;
+  MatInit( &A, m, Nnz, pix, pixweights, pointing_commflag, comm);
   t=MPI_Wtime();
   if (rank==0) {
     printf("[rank %d] Initializing pointing matrix time=%lf \n", rank, t-st);
@@ -176,8 +177,15 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
 
   st=MPI_Wtime();
   // Conjugate Gradient
-  if(solver == 0)
+  //   for (int i = 0; i < nb_blocks_loc; i++) {
+  //     printf("Block samples shift %i\n", A.shift[i+1]);
+  //   }
+  //   printf("Block shift its ok !!!!!!\n");
+  // fflush(stdout);
+
+  if(solver == 0){
     PCG_GLS_true(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, precond, Z_2lvl, nbsamples, sampleIdx);
+  }
   else if (solver == 1)
     ECG_GLS(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, enlFac, ortho_alg, bs_red);
   else {
@@ -331,6 +339,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   free(lhits);
   free(tpltzblocks);
   free(sampleIdx);
+  free(Locshift);
   MPI_Barrier(comm);
   t=MPI_Wtime();
   if (rank==0) {

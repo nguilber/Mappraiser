@@ -21,11 +21,14 @@
 #include "midapack.h"
 #include "mappraiser.h"
 
-int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl, int nbsamples, int* sampleIdx)
+int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl, int nbsamples, int* sampleIdx )
 {
+    int    rank, size;
+    MPI_Comm_rank(A->comm, &rank);
+    MPI_Comm_size(A->comm, &size);
+
     int    i, j, k;     // some indexes
     int    m, n;        // number of local time samples, number of local pixels
-    int    rank, size;
     double localreduce; // reduce buffer
     double st, t;       // timers
     double solve_time = 0.0;
@@ -46,21 +49,17 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
     FILE *fp;
 
-    if (rank == 0) {
-        printf("FIRST Checkpoint on PCG Nothing Done on rank %i \n", rank);
-        fflush(stdout);
-    }
-
-    MPI_Comm_rank(A->comm, &rank);
-    MPI_Comm_size(A->comm, &size);
     m = A->m;
-
 
     st = MPI_Wtime();
 
     if (Z_2lvl == 0) Z_2lvl = size;
     build_precond(&p, &pixpond, &n, A, &Nm1, &x, b, noise, cond, lhits, tol, Z_2lvl, precond);
 
+    if (rank == 0) {
+      printf("7th Checkpoint on PCG Nothing Done on rank %i \n", rank);
+    }
+    fflush(stdout);
     t = MPI_Wtime();
     if (rank == 0) {
         printf("[rank %d] Preconditioner computation time = %lf \n", rank, t - st);
@@ -155,7 +154,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
         g = gt;
 
         // MatVecProd(A, h, Ah, 0);                            // Ah = A h
-        MatVecProdwGaps(A, x, _g, 0, sampleIdx, nbsamples); // Ah = A h
+        MatVecProdwGaps(A, h, Ah, 0, sampleIdx, nbsamples); // Ah = A h
         stbmmProd(Nm1, Nm1Ah);                              // Nm1Ah = Nm1 Ah   (Nm1Ah == Ah)
         TrMatVecProd(A, Nm1Ah, AtNm1Ah, 0);                 // AtNm1Ah = At Nm1Ah
 

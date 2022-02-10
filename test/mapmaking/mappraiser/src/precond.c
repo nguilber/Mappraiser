@@ -1068,7 +1068,7 @@ void mul_ZQtx(double **Z, const double *Qtx, double *vec, int Zn, int n)
   // }
   for (k = 0; k < n; k++)
     vec[k] = 0.0;
-    
+
   for (j = 0; j< Zn; j++) {
     for (k = 0; k < n; k++){
       vec[k] += Z[j][k] * Qtx[j];
@@ -1344,14 +1344,14 @@ void Lanczos_eig(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ, dou
 void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat *A, Tpltz *Nm1, double **in_out_x, double *b, const double *noise, double *cond, int *lhits, double tol, int Zn, int precond)
 {
   int rank, size, i;
+  MPI_Comm_rank(A->comm, &rank);
+  MPI_Comm_size(A->comm, &size);
   double st, t;
   double *x;
   //double *t1, *t2;
 
   struct Precond *p = calloc(1, sizeof(struct Precond));
 
-  MPI_Comm_rank(A->comm, &rank);
-  MPI_Comm_size(A->comm, &size);
 
   if (rank == 0) printf("Last compiled on %s at %s\n", __DATE__, __TIME__);
 

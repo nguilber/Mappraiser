@@ -65,13 +65,13 @@ typedef struct {
 }Mat;
 
 
-int MatInit(Mat *A, int m, int nnz, int *indices, double *values, int flag, int* shift
+int MatInit(Mat *A, int m, int nnz, int *indices, double *values, int flag
 #ifdef W_MPI
 , MPI_Comm comm
 #endif
 );
 
-void MatSetIndices(Mat *A, int m, int nnz, int *indices, int* shift);
+void MatSetIndices(Mat *A, int m, int nnz, int *indices);
 
 void MatSetValues(Mat *A, int m, int nnz, double *values);
 
