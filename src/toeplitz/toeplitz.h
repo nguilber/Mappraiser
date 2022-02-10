@@ -281,6 +281,8 @@ int mpi_stmm(double **V, int n, int m, int id0, int l, double *T, int lambda, Fl
 
 int mpi_stbmm(double **V, int64_t nrow, int m, int m_rowwise, Block *tpltzblocks, int nb_blocks_local, int nb_blocks_all, int64_t idp, int local_V_size, Flag flag_stgy, MPI_Comm comm);
 
+int mpi_stbrdmm(double **V, int64_t nrow, int m, int m_rowwise, Block *tpltzblocks, int nb_blocks_local, int nb_blocks_all, int64_t idp, int local_V_size, Flag flag_stgy, int nbsamples, int* sampleIdx , MPI_Comm comm);
+
 int mpi_gstbmm(double **V, int nrow, int m, int m_rowwise, Block *tpltzblocks, int nb_blocks_local, int nb_blocks_all, int id0p, int local_V_size, int64_t *id0gap, int *lgap, int ngap, Flag flag_stgy, MPI_Comm comm);
 
 #endif
@@ -332,7 +334,7 @@ int get_overlapping_blocks_params(int nbloc, Block *tpltzblocks, int local_V_siz
 
 //Wizard routines
 int stbmmProd( Tpltz Nm1, double *V);
-
+int stbmmProdwGaps(Tpltz Nm1, double *V, int nbsamples, int *sampleIdx);
 //Toeplitz rshp routines
 int fctid_mat2vect(int i, int id0, int n, int lambda);
 

@@ -4,6 +4,7 @@ all:
 	make toeplitz.o \
 	toeplitz_seq.o \
 	toeplitz_block.o \
+	toeplitz_randomblocks.o \
 	toeplitz_gappy.o \
 	toeplitz_nofft.o \
 	toeplitz_rshp.o \
@@ -12,26 +13,29 @@ all:
 	toeplitz_wizard.o
 
 
-toeplitz.o: toeplitz.c toeplitz_nofft.c 
-	$(CC) $(OPTC) $(FFTW_INC) -c toeplitz.c  
+toeplitz.o: toeplitz.c toeplitz_nofft.c
+	$(CC) $(OPTC) $(FFTW_INC) -c toeplitz.c
 
-toeplitz_seq.o: toeplitz_seq.c 
-	$(CC) $(OPTC) $(FFTW_INC) -c toeplitz_seq.c 
+toeplitz_seq.o: toeplitz_seq.c
+	$(CC) $(OPTC) $(FFTW_INC) -c toeplitz_seq.c
 
 toeplitz_block.o: toeplitz_block.c
-	$(CC) $(OPTC) $(FFTW_INC) -c toeplitz_block.c 
+	$(CC) $(OPTC) $(FFTW_INC) -c toeplitz_block.c
+
+toeplitz_randomblocks.o: toeplitz_randomblocks.c
+	$(CC) $(OPTC) $(FFTW_INC) -c toeplitz_randomblocks.c
 
 toeplitz_gappy.o: toeplitz_gappy.c
-	$(CC) $(OPTC) $(FFTW_INC) -c toeplitz_gappy.c 
+	$(CC) $(OPTC) $(FFTW_INC) -c toeplitz_gappy.c
 
 toeplitz_nofft.o: toeplitz_nofft.c
-	$(CC) $(OPTC) $(FFTW_INC) -c toeplitz_nofft.c 
+	$(CC) $(OPTC) $(FFTW_INC) -c toeplitz_nofft.c
 
 toeplitz_rshp.o: toeplitz_rshp.c
-	$(CC) $(OPTC) $(FFTW_INC) -c toeplitz_rshp.c 
+	$(CC) $(OPTC) $(FFTW_INC) -c toeplitz_rshp.c
 
 toeplitz_params.o: toeplitz_params.c
-	$(CC) $(OPTC) $(FFTW_INC) -c toeplitz_params.c 
+	$(CC) $(OPTC) $(FFTW_INC) -c toeplitz_params.c
 
 toeplitz_utils.o: toeplitz_utils.c
 	$(CC) $(OPTC) $(FFTW_INC) -c toeplitz_utils.c
@@ -43,5 +47,3 @@ toeplitz_wizard.o: toeplitz_wizard.c
 
 clean:
 	rm -f *.o ;
-
-

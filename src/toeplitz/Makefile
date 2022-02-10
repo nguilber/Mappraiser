@@ -12,6 +12,7 @@ all:
 	make $(TOEPLITZ_OBJ)/toeplitz.o \
 	$(TOEPLITZ_OBJ)/toeplitz_seq.o \
 	$(TOEPLITZ_OBJ)/toeplitz_block.o \
+	$(TOEPLITZ_OBJ)/toeplitz_randomblocks.c \
 	$(TOEPLITZ_OBJ)/toeplitz_gappy.o \
 	$(TOEPLITZ_OBJ)/toeplitz_nofft.o \
 	$(TOEPLITZ_OBJ)/toeplitz_rshp.o \
@@ -26,6 +27,9 @@ $(TOEPLITZ_OBJ)/toeplitz_seq.o: toeplitz_seq.c
 	$(CC) -c $< -o $@
 
 $(TOEPLITZ_OBJ)/toeplitz_block.o: toeplitz_block.c
+	$(CC) -c $< -o $@
+
+$(TOEPLITZ_OBJ)/toeplitz_randomblocks.o: toeplitz_randomblocks.c
 	$(CC) -c $< -o $@
 
 $(TOEPLITZ_OBJ)/toeplitz_gappy.o: toeplitz_gappy.c

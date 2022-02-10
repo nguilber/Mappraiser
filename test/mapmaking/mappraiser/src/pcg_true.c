@@ -88,8 +88,8 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     for (i = 0; i < m; i++)
         _g[i] = b[i] + noise[i] - _g[i];
 
-    stbmmProd(Nm1, _g); // _g = Nm1 (Ax-b)
-
+    // stbmmProd(Nm1, _g); // _g = Nm1 (Ax-b)
+    stbmmProdwGaps(Nm1, _g, nbsamples, sampleIdx); // _g = Nm1 (Ax-b)
     // TrMatVecProd(A, _g, g, 0); // g = At _g
     TrMatVecProdwGaps(A, _g, g, 0, sampleIdx, nbsamples); // g = At _g
 
@@ -156,7 +156,8 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
         // MatVecProd(A, h, Ah, 0);                            // Ah = A h
         MatVecProdwGaps(A, h, Ah, 0, sampleIdx, nbsamples); // Ah = A h
-        stbmmProd(Nm1, Nm1Ah);                              // Nm1Ah = Nm1 Ah   (Nm1Ah == Ah)
+        // stbmmProd(Nm1, Nm1Ah);                              // Nm1Ah = Nm1 Ah   (Nm1Ah == Ah)
+        stbmmProdwGaps(Nm1, Nm1Ah, nbsamples, sampleIdx);                              // Nm1Ah = Nm1 Ah   (Nm1Ah == Ah)
         // TrMatVecProd(A, Nm1Ah, AtNm1Ah, 0);                 // AtNm1Ah = At Nm1Ah
         TrMatVecProdwGaps(A, Nm1Ah, AtNm1Ah, 0, sampleIdx, nbsamples);                 // AtNm1Ah = At Nm1Ah
 
