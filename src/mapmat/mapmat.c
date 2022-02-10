@@ -674,8 +674,6 @@ int MatVecProdwGaps(Mat *A, double *x, double* y, int pflag,  int *blksamples, i
   if(A->trash_pix){
     for(int iblk=0; iblk < nbsamples; iblk++)
     {
-      // printf(" mmmmmmmmmmmmmmmmmmmmm    = %i\n", A->shift[blksamples[iblk]]);
-      // printf(" mmmmmmmmmmmmmmmmmmmmm    = %i\n", blksamples[iblk]);
       int begblk = A->shift[blksamples[iblk]  ];
       int endblk = A->shift[blksamples[iblk]+1];
       for (i = begblk; i < endblk; i++) {
@@ -690,8 +688,6 @@ int MatVecProdwGaps(Mat *A, double *x, double* y, int pflag,  int *blksamples, i
   else{
     for(int iblk=0; iblk < nbsamples; iblk++)
     {
-      // printf(" mmmmmmmmmmmmmmmmmmmmm    = %i\n", A->shift[blksamples[iblk]]);
-      // printf(" mmmmmmmmmmmmmmmmmmmmm    = %i\n", blksamples[iblk]);
       int begblk = A->shift[blksamples[iblk]  ];
       int endblk = A->shift[blksamples[iblk]+1];
       for (i = begblk; i < endblk; i++) {
@@ -822,7 +818,66 @@ int TrMatVecProd(Mat *A, double *y, double* x, int pflag){
   return 0;
 }
 
+/** Perform a transposed matrix-vector multiplication with only a part of the scans, \f$x \leftarrow A^t y\f$
+    using a precomputed communication scheme. Before calling this routine,
+    the communication structure should have been set, calling MatInit or MatComShape.
+    The routine can be divided in two steps :
+    - a local matrix vector multiplication
+    - a collective-reduce. it consits in a sum reduce over all processes.
 
+    The collective reduce is performed using algorithm previously defined : ring, butterfly ...
+    @sa MatVecProd MatComShape TrMatVecProd_Naive MatInit
+    @param A a pointer to a Mat
+    @param y local input vector (distributed)
+    @param x local output vector (overlapped)
+    @ingroup matmap_group11 */
+int TrMatVecProdwGaps(Mat *A, double *y, double* x, int pflag, int *blksamples, int nbsamples){
+  double *sbuf, *rbuf;
+  int i, j, k, e, iblk;
+  int nSmax, nRmax;
+  double *lvalues;
+  if(A->trash_pix){
+    for(i=0; i < A->lcount-A->nnz; i++)				//refresh vector
+      x[i]=0.0;						//
+
+    for(iblk=0; iblk< nbsamples; iblk++)
+    {
+      int begblk = A->shift[blksamples[iblk]  ];
+      int endblk = A->shift[blksamples[iblk]+1];
+      for (int i = begblk; i < endblk; i++)
+      {
+        if(A->indices[i*A->nnz]!=0){
+          //local transform reduce
+          for(j=0; j< A->nnz; j++){
+            x[A->indices[i*A->nnz+j]-(A->nnz)] += A->values[i*A->nnz+j] * y[i];	//
+          }
+        }
+      }
+    }
+  }
+  else{
+    for(i=0; i < A->lcount; i++)				//refresh vector
+      x[i]=0.0;						//
+
+      for(iblk=0; iblk< nbsamples; iblk++)
+      {
+        int begblk = A->shift[blksamples[iblk]  ];
+        int endblk = A->shift[blksamples[iblk]+1];
+        for (int i = begblk; i < endblk; i++) {
+          //local transform reduce
+          for(j=0; j< A->nnz; j++){
+            x[A->indices[i*A->nnz+j]] += A->values[i*A->nnz+j] * y[i];	//
+          }
+        }
+      }
+  }
+
+
+#ifdef W_MPI
+  greedyreduce(A, x);					//global reduce
+#endif
+  return 0;
+}
 
 
 

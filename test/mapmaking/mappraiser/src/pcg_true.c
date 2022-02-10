@@ -90,7 +90,8 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
     stbmmProd(Nm1, _g); // _g = Nm1 (Ax-b)
 
-    TrMatVecProd(A, _g, g, 0); // g = At _g
+    // TrMatVecProd(A, _g, g, 0); // g = At _g
+    TrMatVecProdwGaps(A, _g, g, 0, sampleIdx, nbsamples); // g = At _g
 
     apply_precond(p, A, &Nm1, g, Cg);
 
@@ -156,7 +157,8 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
         // MatVecProd(A, h, Ah, 0);                            // Ah = A h
         MatVecProdwGaps(A, h, Ah, 0, sampleIdx, nbsamples); // Ah = A h
         stbmmProd(Nm1, Nm1Ah);                              // Nm1Ah = Nm1 Ah   (Nm1Ah == Ah)
-        TrMatVecProd(A, Nm1Ah, AtNm1Ah, 0);                 // AtNm1Ah = At Nm1Ah
+        // TrMatVecProd(A, Nm1Ah, AtNm1Ah, 0);                 // AtNm1Ah = At Nm1Ah
+        TrMatVecProdwGaps(A, Nm1Ah, AtNm1Ah, 0, sampleIdx, nbsamples);                 // AtNm1Ah = At Nm1Ah
 
         coeff = 0.0;
         localreduce = 0.0;
