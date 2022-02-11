@@ -57,7 +57,7 @@ lib:
 	 			$(MAPMAT_OBJ)/als.o $(MAPMAT_OBJ)/alm.o $(MAPMAT_OBJ)/csort.o $(MAPMAT_OBJ)/cindex.o \
 				$(MAPMAT_OBJ)/ring.o $(MAPMAT_OBJ)/butterfly.o $(TOEPLITZ_OBJ)/toeplitz.o $(TOEPLITZ_OBJ)/toeplitz_seq.o \
 				$(TOEPLITZ_OBJ)/toeplitz_block.o $(TOEPLITZ_OBJ)/toeplitz_nofft.o $(TOEPLITZ_OBJ)/toeplitz_gappy.o \
-				$(TOEPLITZ_OBJ)/toeplitz_randomblocks.o $(TOEPLITZ_OBJ)/toeplitz_nofft.o $(TOEPLITZ_OBJ)/toeplitz_gappy.o \
+				$(TOEPLITZ_OBJ)/toeplitz_randomblocks.o  \
 				$(TOEPLITZ_OBJ)/toeplitz_params.o $(TOEPLITZ_OBJ)/toeplitz_rshp.o $(TOEPLITZ_OBJ)/toeplitz_utils.o \
 				$(TOEPLITZ_OBJ)/toeplitz_wizard.o $(FFTW_LIB) -o $(MIDAPACK_LIB)/$(LIBNAME).so
 

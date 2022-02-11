@@ -12,7 +12,7 @@ all:
 	make $(TOEPLITZ_OBJ)/toeplitz.o \
 	$(TOEPLITZ_OBJ)/toeplitz_seq.o \
 	$(TOEPLITZ_OBJ)/toeplitz_block.o \
-	$(TOEPLITZ_OBJ)/toeplitz_randomblocks.c \
+	$(TOEPLITZ_OBJ)/toeplitz_randomblocks.o \
 	$(TOEPLITZ_OBJ)/toeplitz_gappy.o \
 	$(TOEPLITZ_OBJ)/toeplitz_nofft.o \
 	$(TOEPLITZ_OBJ)/toeplitz_rshp.o \
