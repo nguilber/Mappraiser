@@ -54,7 +54,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     st = MPI_Wtime();
 
     if (Z_2lvl == 0) Z_2lvl = size;
-    build_precond(&p, &pixpond, &n, A, &Nm1, &x, b, noise, cond, lhits, tol, Z_2lvl, precond);
+    build_precond(&p, &pixpond, &n, A, &Nm1, &x, b, noise, cond, lhits, tol, Z_2lvl, precond, nbsamples, sampleIdx);
 
     if (rank == 0) {
       printf("7th Checkpoint on PCG Nothing Done on rank %i \n", rank);

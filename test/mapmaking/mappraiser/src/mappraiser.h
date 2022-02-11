@@ -38,10 +38,10 @@ void write_map (void *signal, int type, long nside, const char *filename,
 struct Precond;
 
 // Block-Jacobi preconditioner
-int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, double *cond, int *lhits);
+int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, double *cond, int *lhits, int nbsamples, int* sampleIdx);
 
 // Preconditioner constructor
-void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat *A, Tpltz *Nm1, double **in_out_x, double *b, const double *noise, double *cond, int *lhits, double tol, int Zn, int precond);
+void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat *A, Tpltz *Nm1, double **in_out_x, double *b, const double *noise, double *cond, int *lhits, double tol, int Zn, int precond, int nbsamples, int* sampleIdx);
 
 // Product of the preconditioner with a map vector
 void apply_precond(struct Precond *p, const Mat *A, const Tpltz *Nm1, double *g, double *Cg);
