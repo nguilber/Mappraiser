@@ -85,8 +85,17 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     // MatVecProd(A, x, _g, 0);
     MatVecProdwGaps(A, x, _g, 0, sampleIdx, nbsamples);
 
-    for (i = 0; i < m; i++)
-        _g[i] = b[i] + noise[i] - _g[i];
+    // for (i = 0; i < m; i++) // To Change with Sequenced Data
+    //     _g[i] = b[i] + noise[i] - _g[i];
+
+    for (int ispl = 0; ispl < nbsamples; ispl++) // To Change with Sequenced Data
+    {
+      int begblk = A->shift[sampleIdx[ispl]  ];
+      int endblk = A->shift[sampleIdx[ispl]+1];
+      for (int j = begblk; j < endblk; j++) {
+        _g[j] = b[j] + noise[j] - _g[j];
+      }
+    }
 
     // stbmmProd(Nm1, _g); // _g = Nm1 (Ax-b)
     stbmmProdwGaps(Nm1, _g, nbsamples, sampleIdx); // _g = Nm1 (Ax-b)
