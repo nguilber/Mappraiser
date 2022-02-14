@@ -1442,7 +1442,284 @@ void Lanczos_eig(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ, dou
   *out_Ritz_vectors_AZ = Ritz_vectors_AZ;
 }
 
+// Lanczos procedure to build the deflation subspace of the "a posteriori" 2lvl preconditioner with only some blocks of Tplz Matrix
+void Lanczos_eigWGaps(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ, double *x, const double *b, const double *noise, double tol, const double *pixpond, int K, double ***out_Ritz_vectors, double ***out_Ritz_vectors_AZ, int nbsamples, int *sampleIdx)
+{
+  int i, j, k ;            // some indexes
+  int m, n, rank, size;
+  double st, t;               //timers
+  double solve_time = 0.0;
+  double beta, alpha, result, dot;
+  int info = 0, lwork = -1;
 
+  double *Av = NULL, *_g = NULL;
+  double *Tt = NULL, *T = NULL;
+  double *w = NULL, *v = NULL, *vold = NULL;
+  double *V = NULL, *AmulV = NULL;
+
+  double *Ritz_values = NULL;
+  double *Ritz_vectors_out = NULL;
+  double *Ritz_vectors_out_r = NULL;
+  double **Ritz_vectors = NULL;
+  double **Ritz_vectors_AZ = NULL;
+
+  double *work = NULL;
+  double wkopt = 0.0;
+
+  MPI_Comm_rank(A->comm, &rank);
+  MPI_Comm_size(A->comm, &size);
+
+  m = A->m;                                    // Number of local time samples
+  n = (A->lcount) - (A->nnz) * (A->trash_pix); // Number of local pixels
+
+  st = MPI_Wtime();
+
+  // Map domain
+  Av = (double *)malloc(n * sizeof(double));
+  _g = (double *)malloc(m * sizeof(double));
+
+  T = (double *)calloc((K+1)*(K+1), sizeof(double));
+  Tt = (double *)calloc(K*K, sizeof(double));
+
+  Ritz_vectors_out = (double *)calloc(n*K,  sizeof(double));
+  // Ritz_vectors_out_r = (double *)calloc(n*K,  sizeof(double));
+  w = (double *)malloc(n*sizeof(double));
+  v = (double *)calloc(n, sizeof(double));
+  vold = (double *)calloc(n, sizeof(double));
+  V = (double *)calloc(n * (K+1), sizeof(double));
+
+  AmulV = (double *)calloc(n * (K+1), sizeof(double));
+
+  Ritz_values = (double *)calloc(K, sizeof(double));
+
+  Ritz_vectors = calloc(K, sizeof(double *));
+  for (i = 0; i < K; i++)
+    Ritz_vectors[i] = calloc(n, sizeof(double));
+
+  Ritz_vectors_AZ = calloc(K, sizeof(double *));
+  for (i = 0; i < K; i++)
+    Ritz_vectors_AZ[i] = calloc(n, sizeof(double));
+
+  for (i = 0; i < n; ++i)
+    w[i] = 0.0;
+
+  // MatVecProd(A, x, _g, 0);
+  MatVecProdwGaps(A, x, _g, 0, sampleIdx, nbsamples);
+
+  // for (i = 0; i < m; i++)
+  //   _g[i] = b[i] + noise[i] - _g[i];
+  for (int ispl = 0; ispl < nbsamples; ispl++) // To Change with Sequenced Data
+  {
+    int begblk = A->shift[sampleIdx[ispl]  ];
+    int endblk = A->shift[sampleIdx[ispl]+1];
+    for (int j = begblk; j < endblk; j++) {
+      _g[j] = b[j] + noise[j] - _g[j];
+    }
+  }
+
+  // stbmmProd(*Nm1, _g);
+  stbmmProdwGaps(*Nm1, _g, nbsamples, sampleIdx); // _g = Nm1 (Ax-b)
+
+  // TrMatVecProd(A, _g, w, 0);
+  TrMatVecProdwGaps(A, _g, w, 0, sampleIdx, nbsamples); // g = At _g
+
+  //beta = sqrt(dot(w, w))
+  dot = 0.0;
+  for (i = 0; i < n; i++)
+    dot += w[i] * w[i] * pixpond[i];
+  MPI_Allreduce(&dot, &result, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  beta = sqrt(result);
+
+  if (beta > eps){
+    for (i = 0; i < n; i++){
+      v[i] = w[i]/beta;
+      V[i*(K+1)] = v[i];
+    }
+  }
+
+  //Av = A * v = Pt N P * v
+  // MatVecProd(A, v, _g, 0);
+  MatVecProdwGaps(A, v, _g, 0, sampleIdx, nbsamples);
+
+  // stbmmProd(*Nm1, _g);
+  stbmmProdwGaps(*Nm1, _g, nbsamples, sampleIdx); // _g = Nm1 (Ax-b)
+
+  // TrMatVecProd(A, _g, Av, 0);
+  TrMatVecProdwGaps(A, _g, Av, 0, sampleIdx, nbsamples); // g = At _g
+
+  memcpy(w, Av, n * sizeof(double));
+
+  //alpha = dot(v, Av)
+  dot = 0.0;
+  for (i = 0; i < n; i++)
+    dot += v[i] * Av[i] * pixpond[i];
+  MPI_Allreduce(&dot, &alpha, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+  for (i = 0; i < n; i++)
+    {
+      AmulV[i*(K+1)] = w[i];
+      w[i] = w[i] - (alpha * v[i]);
+    }
+
+  t = MPI_Wtime();
+  if (rank == 0) {
+    printf("[rank %d] Lanczos init time=%lf \n", rank, t - st);
+    fflush(stdout);
+  }
+
+  st = MPI_Wtime();
+
+  for (i = 0; i < K; i++) {
+
+    dot = 0.0;
+    for (j = 0; j < n; j++)
+      dot += w[j] * w[j] * pixpond[j];
+    MPI_Allreduce(&dot, &result, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    beta = sqrt(result);
+
+    if (beta > eps) {
+      for (j = 0; j < n; j++) {
+	v[j] = w[j] / beta;
+	V[j * (K+1) + i + 1] = v[j];
+      }
+    }
+
+    else if (rank == 0) printf("division by zero in iteration %d\n", i);
+
+    // What should we do to construct this special triangular matrix
+    //T(i,i) = alpha
+    //T(i,i+1) = beta
+    //T(i+1,i) = beta
+
+    T[(i * (K+1)) + i] = alpha;
+    T[(i * (K+1)) + i + 1] = beta;
+    T[((i+1) * (K+1)) + i] = beta;
+
+    //Av = A * v = Pt N P * v
+    MatVecProdwGaps(A, v, _g, 0, sampleIdx, nbsamples);
+    stbmmProdwGaps(*Nm1, _g, nbsamples, sampleIdx);
+    TrMatVecProdwGaps(A, _g, Av, 0, sampleIdx, nbsamples);
+    // MatVecProd(A, v, _g, 0);
+    // stbmmProd(*Nm1, _g);
+    // TrMatVecProd(A, _g, Av, 0);
+
+    memcpy(w, Av, n * sizeof(double));
+
+    //alpha = dot(v, Av)
+    dot = 0.0;
+    for (j = 0; j < n; j++)
+      dot += v[j] * Av[j] * pixpond[j];
+    MPI_Allreduce(&dot, &alpha, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+    for (j = 0; j < n; j++) {
+      AmulV[j * (K+1) + i + 1] = w[j];
+      w[j] = w[j] - (alpha * v[j]) - (beta * vold[j]);
+      vold[j] = v[j];
+    }
+
+    t = MPI_Wtime();
+    if (rank == 0) {
+      printf("Iteration = %d, [rank %d] Lanczos iteration time=%lf \n", i, rank, t - st);
+      fflush(stdout);
+    }
+
+    st = MPI_Wtime();
+  }
+
+  // Here we reduce the dimention of T from (K+1 * K+1) to K * K;
+  // Here we reduce the dimention of V from (N * K+1) to (N * K)
+
+  for (i = 0; i < K; i++){
+    for (j = 0; j < K; j++){
+      T[i*K + j] = T[i*(K+1) + j];
+    }
+  }
+
+  for (i = 0; i < n; i++){
+    for (j = 0; j < K; j++){
+      AmulV[i*K + j] = AmulV[i*(K+1) + j];
+    }
+  }
+
+  for (i = 0; i < n; i++){
+    for (j = 0; j < K; j++){
+      V[i*K + j] = V[i*(K+1) + j];
+    }
+  }
+
+  //[Ritz_vectors, Ritz_values] = eig(T)
+  //Ritz_values contains the eigenvalues of the matrix A in ascending order.
+
+  //lapack_int LAPACKE_dsyev(int matrix_layout, char jobz, char uplo, lapack_int n, double* a, lapack_int lda, double* w);
+
+  st = MPI_Wtime();
+
+  transpose_nn(T, K);
+
+  //int dsyev_(char *jobz, char *uplo, int *n, double *a, int *lda, double *w, double *work, int *lwork, int *info)
+
+  dsyev_("Vectors", "Upper", &K, T, &K , Ritz_values, &wkopt, &lwork, &info);
+
+
+
+
+  lwork = (int) wkopt;
+  work = (double*)malloc( lwork*sizeof(double));
+
+  dsyev_("Vectors", "Upper", &K, T, &K , Ritz_values, work, &lwork, &info);
+
+  //free(work);
+
+  transpose_nn(T, K);
+
+  t = MPI_Wtime();
+  if (rank == 0) {
+    printf("[rank %d] Lanczos dsyev time=%lf \n", rank, t - st);
+    fflush(stdout);
+  }
+
+  st = MPI_Wtime();
+
+  memset(Ritz_vectors_out, 0, n*K*sizeof(double));
+
+  for (i = 0; i < n; i++) {
+    for (k = 0; k < K; k++) {
+      for (j = 0; j < K; j++) {
+	Ritz_vectors_out[i*K + j] += V[i*K + k] * T[k*K + j];
+      }
+    }
+  }
+
+  for (i = 0; i < n; i++)
+    for (j = 0; j < K; j++)
+      Ritz_vectors[j][i] =  Ritz_vectors_out[i*K + j];
+
+  memset(Ritz_vectors_out, 0, n*K*sizeof(double));
+
+  for (i = 0; i < n; i++) {
+    for (k = 0; k < K; k++) {
+      for (j = 0; j < K; j++) {
+	Ritz_vectors_out[i*K + j] += AmulV[i*K + k] * T[k*K + j];
+      }
+    }
+  }
+
+  for (i = 0; i < n; i++)
+    for (j = 0; j < K; j++)
+      Ritz_vectors_AZ[j][i] =  Ritz_vectors_out[i*K + j];
+
+  t = MPI_Wtime();
+  if (rank == 0) {
+    printf("[rank %d] Lanczos V*T multiplication time=%lf \n", rank, t - st);
+    fflush(stdout);
+  }
+
+  free(Av); free(_g); free(Tt); free(T); free(w); free(v); free(vold);
+  free(V); free(Ritz_values); free(Ritz_vectors_out);
+
+  *out_Ritz_vectors = Ritz_vectors;
+  *out_Ritz_vectors_AZ = Ritz_vectors_AZ;
+}
 
 
 // General routine for constructing a preconditioner
@@ -1495,7 +1772,8 @@ void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat
 
     // 2lvl a posteriori
     else if (precond == 2)
-      Lanczos_eig(A, Nm1, &(p->BJ_inv), &(p->BJ), x, b, noise, tol, p->pixpond, Zn, &(p->Z), &(p->AZ)); // 2lvl a posteriori preconditioner
+      // Lanczos_eig(A, Nm1, &(p->BJ_inv), &(p->BJ), x, b, noise, tol, p->pixpond, Zn, &(p->Z), &(p->AZ)); // 2lvl a posteriori preconditioner
+      Lanczos_eigWGaps(A, Nm1, &(p->BJ_inv), &(p->BJ), x, b, noise, tol, p->pixpond, Zn, &(p->Z), &(p->AZ), nbsamples, sampleIdx);
 
     // Invalid precond
     else {
