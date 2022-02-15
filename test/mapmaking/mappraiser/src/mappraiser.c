@@ -184,7 +184,8 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   // fflush(stdout);
 
   if(solver == 0){
-    PCG_GLS_true(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, precond, Z_2lvl, nbsamples, sampleIdx);
+    PCG_GLS_rand(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, precond, Z_2lvl, nbsamples, sampleIdx);
+    PCG_GLS_true(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, precond, Z_2lvl);
   }
   else if (solver == 1)
     ECG_GLS(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, enlFac, ortho_alg, bs_red);

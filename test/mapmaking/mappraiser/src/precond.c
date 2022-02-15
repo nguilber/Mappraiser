@@ -565,7 +565,222 @@ int get_pixshare_pond(Mat *A, double *pixpond )
 }
 
 //Block diagonal jacobi preconditioner with degenrate pixels pre-processing
-int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, double *cond, int *lhits, int nbsamples, int* sampleIdx)
+int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, double *cond, int *lhits)
+{
+  int           i, j, k ;                       // some indexes
+  int           m, m_cut, n, rank, size;
+  int *indices_new, *tmp1;
+  double *vpixBlock, *vpixBlock_inv, *vpixBlock_loc, *hits_proc, *tmp2,*tmp3,*tmp4;
+  double det, invdet;
+  int info, nb, lda;
+  double anorm, rcond;
+
+  int iw[3];
+  double w[18];
+  double x[9];
+  nb = 3;
+  lda = 3;
+
+  m = A->m;
+  m_cut = m;
+  n = A->lcount;
+  MPI_Comm_rank(A->comm, &rank);                 //
+  MPI_Comm_size(A->comm, &size);
+
+  indices_new = (int *) malloc((A->nnz)*n * sizeof(int));
+  vpixBlock_loc = (double *) malloc(n * sizeof(double));
+  vpixBlock = (double *) malloc(n*(A->nnz) * sizeof(double));
+  vpixBlock_inv = (double *) malloc(n*(A->nnz) * sizeof(double));
+  hits_proc = (double *) malloc(n * sizeof(double));
+
+  //Compute local Atdiag(N^1)A
+  getlocalW(A, Nm1, vpixBlock, lhits);
+  // sum hits globally: dumb chunk of code that needs to be rewritten, but works for now ...
+  for(i=0;i<n;i+=3){
+    hits_proc[i] = lhits[(int)i/3];
+    hits_proc[i+1] = lhits[(int)i/3];
+    hits_proc[i+2] = lhits[(int)i/3];
+  }
+  commScheme(A, hits_proc, 2);
+  for(i=0;i<n;i+=3){
+    lhits[(int)i/3] = (int)hits_proc[i];
+  }
+  free(hits_proc);
+
+  //communicate with the other processes to have the global reduce
+  //TODO : This should be done in a more efficient way
+  for(i=0;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
+    for(j=0;j<(A->nnz);j++){
+      vpixBlock_loc[(i/(A->nnz))+j] = vpixBlock[i+j];
+    }
+  }
+  commScheme(A, vpixBlock_loc, 2);
+  for(i=0;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
+    for(j=0;j<(A->nnz);j++){
+      vpixBlock[i+j] = vpixBlock_loc[(i/(A->nnz))+j];
+    }
+  }
+
+  for(i=3;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
+    for(j=0;j<(A->nnz);j++)
+      vpixBlock_loc[(i-3)/(A->nnz)+j] = vpixBlock[i+j];
+  }
+  commScheme(A, vpixBlock_loc, 2);
+  for(i=3;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
+    for(j=0;j<(A->nnz);j++)
+      vpixBlock[i+j] = vpixBlock_loc[(i-3)/(A->nnz)+j];
+  }
+
+  for(i=6;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
+    for(j=0;j<(A->nnz);j++)
+      vpixBlock_loc[(i-6)/(A->nnz)+j] = vpixBlock[i+j];
+  }
+  commScheme(A, vpixBlock_loc, 2);
+  for(i=6;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
+    for(j=0;j<(A->nnz);j++)
+      vpixBlock[i+j] = vpixBlock_loc[(i-6)/(A->nnz)+j];
+  }
+
+  //Compute the inverse of the global AtA blocks (beware this part is only valid for nnz = 3)
+  int uncut_pixel_index = 0;
+  for(i=0;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
+    //init 3x3 block
+    double block[3][3];
+    for(j=0;j<3;j++){
+      for(k=0;k<3;k++){
+        block[j][k] = vpixBlock[i+(j*3)+k];
+        x[k+3*j] = block[j][k];
+      }
+    }
+
+    //Compute the reciprocal of the condition number of the block
+
+    /* Computes the norm of x */
+    anorm = dlange_("1", &nb, &nb, x, &lda, w);
+
+    /* Modifies x in place with a LU decomposition */
+    dgetrf_(&nb, &nb, x, &lda, iw, &info);
+    // if (info != 0) fprintf(stderr, "failure with error %d\n", info);
+
+    /* Computes the reciprocal norm */
+    dgecon_("1", &nb, x, &lda, &anorm, &rcond, w, iw, &info);
+    // if (info != 0) fprintf(stderr, "failure with error %d\n", info);
+
+    cond[(int)i/9] = rcond;
+
+    //Compute det
+    //TODO: This should take into account the fact that the blocks are symmetric
+    // and generalize beyond the 3x3 case
+    det = block[0][0] * (block[1][1] * block[2][2] - block[2][1] * block[1][2]) -
+      block[0][1] * (block[1][0] * block[2][2] - block[1][2] * block[2][0]) +
+      block[0][2] * (block[1][0] * block[2][1] - block[1][1] * block[2][0]);
+
+    if(rcond > 1e-1){
+      invdet = 1 / det;
+
+      //Compute the inverse coeffs
+      //TODO: This should take into account the fact that the blocks are symmetric
+      // an generalize beyond the 3x3 case
+      vpixBlock_inv[i] = (block[1][1] * block[2][2] - block[2][1] * block[1][2]) * invdet;
+      vpixBlock_inv[i+1] = (block[0][2] * block[2][1] - block[0][1] * block[2][2]) * invdet;
+      vpixBlock_inv[i+2] = (block[0][1] * block[1][2] - block[0][2] * block[1][1]) * invdet;
+      vpixBlock_inv[i+3] = (block[1][2] * block[2][0] - block[1][0] * block[2][2]) * invdet;
+      vpixBlock_inv[i+4] = (block[0][0] * block[2][2] - block[0][2] * block[2][0]) * invdet;
+      vpixBlock_inv[i+5] = (block[1][0] * block[0][2] - block[0][0] * block[1][2]) * invdet;
+      vpixBlock_inv[i+6] = (block[1][0] * block[2][1] - block[2][0] * block[1][1]) * invdet;
+      vpixBlock_inv[i+7] = (block[2][0] * block[0][1] - block[0][0] * block[2][1]) * invdet;
+      vpixBlock_inv[i+8] = (block[0][0] * block[1][1] - block[1][0] * block[0][1]) * invdet;
+    }
+    else{// Remove the degenerate pixels from the map-making
+
+      // Remove the poorly conditioned pixel from the map, point the associated gap samples to trash pixel
+      // Set flag of trash pixels in pointing matrix to 1
+      A->trash_pix = 1;
+      // Search for the corresponding gap samples
+      j = A->id0pix[(int)uncut_pixel_index/((A->nnz)*(A->nnz))]; // last index of time sample pointing to degenerate pixel
+      // Point the last gap sample to trash pixel
+      for(k=0;k<(A->nnz); k++){
+        A->indices[j*(A->nnz)+k] = k-(A->nnz);
+        A->values[j*(A->nnz)+k] = 0;
+      }
+      // Set the corresponding signal time stream sample to zero
+      b[j] = 0;
+      // Point all the preceding gap samples to trash pixel and set them to zero in the TOD
+      while(A->ll[j]!= -1){
+        b[A->ll[j]] = 0;
+        for(k=0;k<(A->nnz); k++){
+          A->indices[A->ll[j]*(A->nnz)+k] = k-(A->nnz);
+          A->values[A->ll[j]*(A->nnz)+k] = 0;
+        }
+        j = A->ll[j];
+      }
+
+      // Remove degenerate pixel from vpixBlock, lhits, and cond
+      memmove(vpixBlock+i, vpixBlock+i+(A->nnz)*(A->nnz),(n*(A->nnz)-(A->nnz)*(A->nnz)-i)*sizeof(double));
+      memmove(lhits+(int)i/((A->nnz)*(A->nnz)), lhits+(int)i/((A->nnz)*(A->nnz))+1, ((int)n/(A->nnz)-1-(int)i/((A->nnz)*(A->nnz)))*sizeof(int));
+      memmove(cond+(int)i/((A->nnz)*(A->nnz)), cond+(int)i/((A->nnz)*(A->nnz))+1, ((int)n/(A->nnz)-1-(int)i/((A->nnz)*(A->nnz)))*sizeof(double));
+
+      // Shrink effective size of vpixBlock
+      n -= (A->nnz);
+      i -= (A->nnz)*(A->nnz);
+    }
+    uncut_pixel_index += (A->nnz)*(A->nnz);
+  }
+  // free memory
+  free(A->id0pix);
+  free(A->ll);
+  // Reallocate memory for preconditioner blocks and redefine pointing matrix in case of the presence of degenerate pixels
+  if(A->trash_pix){
+    // Reallocate memory of vpixBlock by shrinking its memory size to its effective size (no degenerate pixel)
+    tmp2 = (double *) realloc(vpixBlock, n*(A->nnz)*sizeof(double));
+    tmp4 = (double *) realloc(vpixBlock_inv, n*(A->nnz)*sizeof(double));
+    tmp1 = (int *) realloc(lhits, (int)n/(A->nnz)*sizeof(int));
+    tmp3 = (double *) realloc(cond,(int)n/(A->nnz)*sizeof(double));
+    if(tmp2 != NULL){
+      vpixBlock = tmp2;
+      vpixBlock_inv = tmp4;
+      lhits = tmp1;
+      cond = tmp3;
+    }
+  }
+
+  // map local indices to global indices in indices_cut
+  for(i=0; i<m*A->nnz;i++){
+    // switch to global indices
+    if(A->indices[i]>=0) // only for no trash_pix
+      A->indices[i] = A->lindices[A->indices[i]];
+  }
+
+  // free  memory of original pointing matrix and synchronize
+  MatFree(A);
+
+  // Define new pointing matrix (marginalized over degenerate pixels and free from gap samples)
+  MatInit(A, m, A->nnz, A->indices, A->values, A->flag, MPI_COMM_WORLD);
+
+  //Define Block-Jacobi preconditioner indices
+  for(i=0;i<n;i++){
+    for(j=0;j<(A->nnz);j++){
+      indices_new[i*(A->nnz)+j] = A->lindices[(A->nnz)*(A->trash_pix)+(A->nnz)*((int)i/(A->nnz))+j];
+    }
+  }
+
+  //Init Block-Jacobi inv preconditioner
+  MatSetIndices(BJ_inv, n, A->nnz, indices_new);
+  MatSetValues(BJ_inv, n, A->nnz, vpixBlock_inv);
+  BJ_inv->trash_pix = 0;
+  MatLocalShape(BJ_inv,3);
+
+  //Init Block-Jacobi preconditioner
+  MatSetIndices(BJ, n, A->nnz, indices_new);
+  MatSetValues(BJ, n, A->nnz, vpixBlock);
+  BJ->trash_pix = 0;
+  MatLocalShape(BJ,3);
+
+  return 0;
+}
+
+//Block diagonal jacobi preconditioner with degenrate pixels pre-processing
+int precondblockjacobilikewGaps(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, double *cond, int *lhits, int nbsamples, int* sampleIdx)
 {
   int           i, j, k ;                       // some indexes
   int           m, m_cut, n, rank, size;
@@ -1723,7 +1938,7 @@ void Lanczos_eigWGaps(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ
 
 
 // General routine for constructing a preconditioner
-void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat *A, Tpltz *Nm1, double **in_out_x, double *b, const double *noise, double *cond, int *lhits, double tol, int Zn, int precond, int nbsamples, int* sampleIdx)
+void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat *A, Tpltz *Nm1, double **in_out_x, double *b, const double *noise, double *cond, int *lhits, double tol, int Zn, int precond)
 {
   int rank, size, i;
   MPI_Comm_rank(A->comm, &rank);
@@ -1740,7 +1955,96 @@ void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat
   p->precond = precond;
   p->Zn = Zn;
 
-  precondblockjacobilike(A, *Nm1, &(p->BJ_inv), &(p->BJ), b, cond, lhits, nbsamples, sampleIdx);
+  precondblockjacobilike(A, *Nm1, &(p->BJ_inv), &(p->BJ), b, cond, lhits);
+
+  p->n = (A->lcount) - (A->nnz) * (A->trash_pix);
+
+  // Reallocate memory for well-conditioned map
+  x = realloc(*in_out_x, p->n * sizeof(double));
+  if (x == NULL) {
+    printf("Out of memory: map reallocation failed");
+    exit(1);
+  }
+
+  p->pixpond = (double *)malloc(p->n * sizeof(double));
+
+  // Compute pixel share ponderation
+  get_pixshare_pond(A, p->pixpond);
+
+  if (precond != 0) {
+    p->Qg = calloc(p->n, sizeof(double));
+    p->AQg = calloc(p->n, sizeof(double));
+    p->w = calloc(Zn, sizeof(double)); // Zt * x
+    p->Qtx = calloc(Zn, sizeof(double)); // Em1 * Zt * x
+
+    st = MPI_Wtime();
+
+    // 2lvl a priori
+    if (precond == 1) {
+      build_Z(A, Zn, &(p->Z));
+      build_AZ(A, Nm1, p->Z, Zn, p->n, &(p->AZ));
+    }
+
+    // 2lvl a posteriori
+    else if (precond == 2)
+      Lanczos_eig(A, Nm1, &(p->BJ_inv), &(p->BJ), x, b, noise, tol, p->pixpond, Zn, &(p->Z), &(p->AZ)); // 2lvl a posteriori preconditioner
+
+    // Invalid precond
+    else {
+      printf("Whoops! Incorrect preconditioner parameter, please check documentation and try again: %d\n", precond);
+      printf("Quick reminder: precond = 0 -> BD, precond = 1 -> 2lvl a priori, precond = 2 -> 2lvl a posteriori\n");
+      exit(1);
+    }
+
+    t = MPI_Wtime();
+    if (rank == 0) {
+      printf("[rank %d] Deflation (Z) & projected deflation (AZ) subspaces computation time=%lf \n", rank, t - st);
+      fflush(stdout);
+    }
+    st = MPI_Wtime();
+
+    build_Em1(A, p->Z, p->AZ, p->pixpond, Zn, p->n, &(p->Em1));
+
+    t = MPI_Wtime();
+    if (rank == 0){
+      printf("[rank %d] 2lvl Em1 computation time=%lf \n", rank, t - st);
+      fflush(stdout);
+    }
+
+    // For x initial guess is 0
+    //memcpy(x, p->Z[Zn-1], p->n * sizeof(double));
+
+    // For x initial guess is not 0
+    //for (i = 0; i < p->n; i++)
+    //  x[i] = x[i] +  p->Z[Zn-1][i];
+  }
+
+  *out_p = p;
+  *out_pixpond = p->pixpond;
+  *out_n = p->n;
+  *in_out_x = x;
+}
+
+// General routine for constructing a preconditioner
+void build_precond4rand(struct Precond **out_p, double **out_pixpond, int *out_n, Mat *A, Tpltz *Nm1, double **in_out_x, double *b, const double *noise, double *cond, int *lhits, double tol, int Zn, int precond, int nbsamples, int *sampleIdx)
+{
+  int rank, size, i;
+  MPI_Comm_rank(A->comm, &rank);
+  MPI_Comm_size(A->comm, &size);
+  double st, t;
+  double *x;
+  //double *t1, *t2;
+
+  struct Precond *p = calloc(1, sizeof(struct Precond));
+
+
+  if (rank == 0) printf("Last compiled on %s at %s\n", __DATE__, __TIME__);
+
+  p->precond = precond;
+  p->Zn = Zn;
+
+  // precondblockjacobilike(A, *Nm1, &(p->BJ_inv), &(p->BJ), b, cond, lhits);
+  precondblockjacobilikewGaps(A, *Nm1, &(p->BJ_inv), &(p->BJ), b, cond, lhits, nbsamples, sampleIdx);
 
   p->n = (A->lcount) - (A->nnz) * (A->trash_pix);
 
