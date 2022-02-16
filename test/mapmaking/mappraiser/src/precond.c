@@ -342,6 +342,9 @@ int commScheme(Mat *A, double *vpixDiag, int pflag){
   int i, j, k;
   int nSmax, nRmax, nStot, nRtot;
   double *lvalues, *com_val, *out_val;
+  int rank, size;
+  MPI_Comm_rank(A->comm, &rank);                 //
+  MPI_Comm_size(A->comm, &size);
 
 #if W_MPI
   lvalues = (double *) malloc((A->lcount-(A->nnz)*(A->trash_pix)) *sizeof(double));    /*<allocate and set to 0.0 local values*/
@@ -601,12 +604,19 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
     hits_proc[i+1] = lhits[(int)i/3];
     hits_proc[i+2] = lhits[(int)i/3];
   }
+  if (rank == 0) {
+    printf("COUCOU before COMM SCHEME \n" );
+  }
+  fflush(stdout);
   commScheme(A, hits_proc, 2);
+  if (rank == 0) {
+    printf("COUCOU after COMM SCHEME call 1 \n" );
+  }
+  fflush(stdout);
   for(i=0;i<n;i+=3){
     lhits[(int)i/3] = (int)hits_proc[i];
   }
   free(hits_proc);
-
   //communicate with the other processes to have the global reduce
   //TODO : This should be done in a more efficient way
   for(i=0;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
@@ -615,6 +625,10 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
     }
   }
   commScheme(A, vpixBlock_loc, 2);
+  if (rank == 0) {
+    printf("COUCOU after COMM SCHEME call 2 \n" );
+  }
+  fflush(stdout);
   for(i=0;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
     for(j=0;j<(A->nnz);j++){
       vpixBlock[i+j] = vpixBlock_loc[(i/(A->nnz))+j];
@@ -626,6 +640,10 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
       vpixBlock_loc[(i-3)/(A->nnz)+j] = vpixBlock[i+j];
   }
   commScheme(A, vpixBlock_loc, 2);
+  if (rank == 0) {
+    printf("COUCOU after COMM SCHEME call 2 \n" );
+  }
+  fflush(stdout);
   for(i=3;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
     for(j=0;j<(A->nnz);j++)
       vpixBlock[i+j] = vpixBlock_loc[(i-3)/(A->nnz)+j];
@@ -636,11 +654,18 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
       vpixBlock_loc[(i-6)/(A->nnz)+j] = vpixBlock[i+j];
   }
   commScheme(A, vpixBlock_loc, 2);
+  if (rank == 0) {
+    printf("COUCOU after COMM SCHEME call 3 \n" );
+  }
+  fflush(stdout);
   for(i=6;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
     for(j=0;j<(A->nnz);j++)
       vpixBlock[i+j] = vpixBlock_loc[(i-6)/(A->nnz)+j];
   }
-
+  if (rank == 0) {
+    printf("COUCOU after COMM SCHEME CALLS\n" );
+  }
+  fflush(stdout);
   //Compute the inverse of the global AtA blocks (beware this part is only valid for nnz = 3)
   int uncut_pixel_index = 0;
   for(i=0;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
@@ -727,8 +752,10 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
     uncut_pixel_index += (A->nnz)*(A->nnz);
   }
   // free memory
+
   free(A->id0pix);
   free(A->ll);
+
   // Reallocate memory for preconditioner blocks and redefine pointing matrix in case of the presence of degenerate pixels
   if(A->trash_pix){
     // Reallocate memory of vpixBlock by shrinking its memory size to its effective size (no degenerate pixel)
@@ -743,14 +770,12 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
       cond = tmp3;
     }
   }
-
   // map local indices to global indices in indices_cut
   for(i=0; i<m*A->nnz;i++){
     // switch to global indices
     if(A->indices[i]>=0) // only for no trash_pix
       A->indices[i] = A->lindices[A->indices[i]];
   }
-
   // free  memory of original pointing matrix and synchronize
   MatFree(A);
 
@@ -775,7 +800,6 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
   MatSetValues(BJ, n, A->nnz, vpixBlock);
   BJ->trash_pix = 0;
   MatLocalShape(BJ,3);
-
   return 0;
 }
 
@@ -799,6 +823,7 @@ int precondblockjacobilikewGaps(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double 
   m = A->m;
   m_cut = m;
   n = A->lcount;
+  fflush(stdout);
   MPI_Comm_rank(A->comm, &rank);                 //
   MPI_Comm_size(A->comm, &size);
 

@@ -29,9 +29,11 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   int		m, Nb_t_Intervals;  //local number of rows of the pointing matrix A, nbr of stationary intervals
   int64_t	gif;			//global indice for the first local line
   int		i, j, k;
-  Mat	A;			        //pointing matrix structure
-  int 		*id0pix, *ll;
+  Mat	A, B;			        //pointing matrix structure
+  int 		*id0pix, *ll, *id0pix_B, *ll_B;
   double	*x;	//pixel domain vectors
+  void	*copy_signal, *pix_copy, *pixweights_copy;	//pixel domain vectors
+  double	*x_B;	//pixel domain vectors
   double	st, t;		 	//timer, start time
   int 		rank, size;
   MPI_Status status;
@@ -74,16 +76,24 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
     fflush(stdout);
   }
 
+  pix_copy = calloc(m*Nnz,sizeof(int));
+  memcpy(pix_copy, pix, m*Nnz*sizeof(int));
+  pixweights_copy = calloc(m*Nnz,sizeof(double));
+  memcpy(pixweights_copy, pixweights, m*Nnz*sizeof(double));
+
   //Pointing matrix init
   st=MPI_Wtime();
   A.trash_pix =0;
+  B.trash_pix =0;
   int *Locshift = (int *) malloc((nb_blocks_loc+1) * sizeof(int));
   Locshift[0] = 0;
   for (int iblk = 0; iblk < nb_blocks_loc; iblk++) {
     Locshift[iblk+1] = Locshift[iblk] + ((int *)local_blocks_sizes)[iblk];
   }
   A.shift = Locshift;
+  B.shift = Locshift;
   MatInit( &A, m, Nnz, pix, pixweights, pointing_commflag, comm);
+  MatInit( &B, m, Nnz, pix_copy, pixweights_copy, pointing_commflag, comm);
   t=MPI_Wtime();
   if (rank==0) {
     printf("[rank %d] Initializing pointing matrix time=%lf \n", rank, t-st);
@@ -93,26 +103,39 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   //Build pixel-to-time domain mapping
   st=MPI_Wtime();
   id0pix = (int *) malloc(A.lcount/(A.nnz) * sizeof(int)); //index of the last time sample pointing to each pixel
+  id0pix_B = (int *) malloc(A.lcount/(A.nnz) * sizeof(int)); //index of the last time sample pointing to each pixel
   ll = (int *) malloc(m * sizeof(int)); //linked list of time samples indexes
+  ll_B = (int *) malloc(m * sizeof(int)); //linked list of time samples indexes
+  copy_signal = calloc(A.m,sizeof (double));
+  memcpy(copy_signal, signal, m * sizeof(double));
 
   //initialize the mapping arrays to -1
   for(i=0; i<m; i++){
     ll[i] = -1;
+    ll_B[i] = -1;
+
   }
   for(j=0; j<A.lcount/(A.nnz); j++){
     id0pix[j] = -1;
+    id0pix_B[j] = -1;
   }
   //build the linked list chain of time samples corresponding to each pixel
   for(i=0;i<m;i++){
-    if(id0pix[A.indices[i*A.nnz]/(A.nnz)] == -1)
+    if(id0pix[A.indices[i*A.nnz]/(A.nnz)] == -1){
       id0pix[A.indices[i*A.nnz]/(A.nnz)] = i;
+      id0pix_B[A.indices[i*A.nnz]/(A.nnz)] = i;
+      }
     else{
+      ll_B[i] = id0pix[A.indices[i*A.nnz]/(A.nnz)];
       ll[i] = id0pix[A.indices[i*A.nnz]/(A.nnz)];
+      id0pix_B[A.indices[i*A.nnz]/(A.nnz)] = i;
       id0pix[A.indices[i*A.nnz]/(A.nnz)] = i;
     }
   }
   A.id0pix = id0pix;
   A.ll = ll;
+  B.id0pix = id0pix_B;
+  B.ll = ll_B;
   t=MPI_Wtime();
   if (rank==0) {
     printf("[rank %d] Total pixel-to-time domain mapping time=%lf \n", rank, t-st);
@@ -123,12 +146,20 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   int *lhits;
   double *cond;
   x   = (double *) malloc(A.lcount*sizeof(double));
+  x_B   = (double *) malloc(A.lcount*sizeof(double));
   cond = (double *) malloc((int)(A.lcount/3)*sizeof(double));
   lhits = (int *) malloc((int)(A.lcount/3) * sizeof(int));
+  int *lhits_B;
+  double *cond_B;
+  cond_B = (double *) malloc((int)(A.lcount/3)*sizeof(double));
+  lhits_B = (int *) malloc((int)(A.lcount/3) * sizeof(int));
 
   for(j=0; j<A.lcount; j++){
     x[j] = 0.;
+    x_B[j] = 0.;
     if(j%3 == 0){
+      lhits_B[(int)(j/3)] = 0;
+      cond_B[(int)(j/3)] = 0.;
       lhits[(int)(j/3)] = 0;
       cond[(int)(j/3)] = 0.;
     }
@@ -184,7 +215,14 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   // fflush(stdout);
 
   if(solver == 0){
-    PCG_GLS_rand(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, precond, Z_2lvl, nbsamples, sampleIdx);
+    PCG_GLS_rand(outpath, ref, &B, Nm1, x_B, copy_signal, noise, cond_B, lhits_B, tol, maxiter, precond, Z_2lvl, nbsamples, sampleIdx);
+
+    // Update with solution from previous solver
+    int mapsize0 = B.lcount-(B.nnz)*(B.trash_pix);
+    for(i=0; i< mapsize0; i++){
+      x[i] = x_B[i];
+    }
+    MPI_Barrier(comm);
     PCG_GLS_true(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, precond, Z_2lvl);
   }
   else if (solver == 1)
@@ -338,6 +376,9 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   free(x);
   free(cond);
   free(lhits);
+  free(cond_B);
+  free(lhits_B);
+  free(copy_signal);
   free(tpltzblocks);
   free(sampleIdx);
   free(Locshift);

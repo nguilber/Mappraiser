@@ -29,6 +29,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     MPI_Comm_size(A->comm, &size);
     if (rank == 0)
       printf("##### Start PCG on full GLS Pb ################### \n");
+    fflush(stdout);
     int    i, j, k;     // some indexes
     int    m, n;        // number of local time samples, number of local pixels
     double localreduce; // reduce buffer
@@ -135,7 +136,6 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     res0 = res;
     // Test if already converged
     if (rank == 0) {
-
         res_rel = sqrt(res) / sqrt(res0);
 	      printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", 0, res, g2pix, res_rel, t - st);
         char filename[256];
@@ -154,22 +154,19 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     st = MPI_Wtime();
     fflush(stdout);
 
-
     // PCG Descent Loop *********************************************
     for (k = 1; k < K ; k++){
 
         // Swap g backup pointers (Ribière-Polak needs g from previous iteration)
         gt = gp;
         gp = g;
-        g = gt;
-
+        g  = gt;
         MatVecProd(A, h, Ah, 0);                            // Ah = A h
         // MatVecProdwGaps(A, h, Ah, 0, sampleIdx, nbsamples); // Ah = A h
         stbmmProd(Nm1, Nm1Ah);                              // Nm1Ah = Nm1 Ah   (Nm1Ah == Ah)
         // stbmmProdwGaps(Nm1, Nm1Ah, nbsamples, sampleIdx);                              // Nm1Ah = Nm1 Ah   (Nm1Ah == Ah)
         TrMatVecProd(A, Nm1Ah, AtNm1Ah, 0);                 // AtNm1Ah = At Nm1Ah
         // TrMatVecProdwGaps(A, Nm1Ah, AtNm1Ah, 0, sampleIdx, nbsamples);                 // AtNm1Ah = At Nm1Ah
-
         coeff = 0.0;
         localreduce = 0.0;
         for (i = 0; i < n; i++)
@@ -186,7 +183,6 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
             g[j] = gp[j] - ro * AtNm1Ah[j]; // Use Ribière-Polak formula
 
 	      apply_precond(p, A, &Nm1, g, Cg);
-
         g2pixp = g2pix; // g2p = "res"
         localreduce = 0.0;
         for (i = 0; i < n; i++) // g2 = (Cg, g)
@@ -214,7 +210,6 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
         else {
             res = g2pix_polak;
         }
-
         if (rank == 0){ //print iterate info
 	          res_rel = sqrt(res) / sqrt(res0);
             printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", k, res, g2pix_polak, res_rel, t - st);
@@ -386,7 +381,7 @@ int PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
         res_rel = sqrt(res) / sqrt(res0);
 	      printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", 0, res, g2pix, res_rel, t - st);
         char filename[256];
-        sprintf(filename,"%s/pcg_residuals_%s.dat", outpath, ref);
+        sprintf(filename,"%s/rand_pcg_residuals_%s.dat", outpath, ref);
         fp = fopen(filename, "wb");
         fwrite(&res_rel, sizeof(double), 1, fp);
         fflush(stdout);
@@ -494,6 +489,19 @@ int PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
             h[j] = h[j] * gamma + Cg[j];
 
     } // End loop
+
+    MatVecProd(A, x, _g, 0);
+    for (i = 0; i < m; i++) // To Change with Sequenced Data
+        _g[i] = b[i] + noise[i] - _g[i];
+
+    stbmmProd(Nm1, _g); // _g = Nm1 (Ax-b)
+    TrMatVecProd(A, _g, g, 0); // g = At _g
+    localreduce = 0.0;
+    for (i = 0; i < n; i++) // g2 = (Cg, g)
+        localreduce += g[i] * g[i] * pixpond[i];
+    MPI_Allreduce(&localreduce, &res, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    if (rank == 0)
+        printf("--> VERIF of RES on True LS PB : %e \n", res);
 
     if (k == K) { // check unconverged
         if (rank == 0) {
