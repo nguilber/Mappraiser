@@ -604,15 +604,7 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
     hits_proc[i+1] = lhits[(int)i/3];
     hits_proc[i+2] = lhits[(int)i/3];
   }
-  if (rank == 0) {
-    printf("COUCOU before COMM SCHEME \n" );
-  }
-  fflush(stdout);
   commScheme(A, hits_proc, 2);
-  if (rank == 0) {
-    printf("COUCOU after COMM SCHEME call 1 \n" );
-  }
-  fflush(stdout);
   for(i=0;i<n;i+=3){
     lhits[(int)i/3] = (int)hits_proc[i];
   }
@@ -625,10 +617,6 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
     }
   }
   commScheme(A, vpixBlock_loc, 2);
-  if (rank == 0) {
-    printf("COUCOU after COMM SCHEME call 2 \n" );
-  }
-  fflush(stdout);
   for(i=0;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
     for(j=0;j<(A->nnz);j++){
       vpixBlock[i+j] = vpixBlock_loc[(i/(A->nnz))+j];
@@ -640,10 +628,6 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
       vpixBlock_loc[(i-3)/(A->nnz)+j] = vpixBlock[i+j];
   }
   commScheme(A, vpixBlock_loc, 2);
-  if (rank == 0) {
-    printf("COUCOU after COMM SCHEME call 2 \n" );
-  }
-  fflush(stdout);
   for(i=3;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
     for(j=0;j<(A->nnz);j++)
       vpixBlock[i+j] = vpixBlock_loc[(i-3)/(A->nnz)+j];
@@ -654,18 +638,10 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
       vpixBlock_loc[(i-6)/(A->nnz)+j] = vpixBlock[i+j];
   }
   commScheme(A, vpixBlock_loc, 2);
-  if (rank == 0) {
-    printf("COUCOU after COMM SCHEME call 3 \n" );
-  }
-  fflush(stdout);
   for(i=6;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
     for(j=0;j<(A->nnz);j++)
       vpixBlock[i+j] = vpixBlock_loc[(i-6)/(A->nnz)+j];
   }
-  if (rank == 0) {
-    printf("COUCOU after COMM SCHEME CALLS\n" );
-  }
-  fflush(stdout);
   //Compute the inverse of the global AtA blocks (beware this part is only valid for nnz = 3)
   int uncut_pixel_index = 0;
   for(i=0;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
