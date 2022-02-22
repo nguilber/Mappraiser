@@ -504,7 +504,7 @@ int MatLocalShape(Mat *A, int sflag){
   memcpy(A->lindices, tmp_indices, A->lcount * sizeof(int));	//copy tmp_indices into lindices and free
   free(tmp_indices);
 
-  sindex(A->lindices, A->lcount, A->indices, A->nnz * A->m);
+  sindex(A->lindices, A->lcount, A->indices, A->nnz * A->m); // A->indices : Global to new local indexing
   return 0;
 }
 
@@ -837,7 +837,7 @@ int TrMatVecProdwGaps(Mat *A, double *y, double* x, int pflag, int *blksamples, 
   int nSmax, nRmax;
   double *lvalues;
   if(A->trash_pix){
-    for(i=0; i < A->lcount-A->nnz; i++)				//refresh vector
+    for(i=0; i < A->lcount-A->nnz; i++)		//refresh vector
       x[i]=0.0;						//
 
     for(iblk=0; iblk< nbsamples; iblk++)

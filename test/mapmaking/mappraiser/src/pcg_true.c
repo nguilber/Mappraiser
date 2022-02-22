@@ -21,7 +21,7 @@
 #include "midapack.h"
 #include "mappraiser.h"
 
-int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl)
+int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl, double *x_init, int n_init, int* old_lindices, int old_trashpix)
 {
 
     int    rank, size;
@@ -59,6 +59,16 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     if (Z_2lvl == 0) Z_2lvl = size;
     build_precond(&p, &pixpond, &n, A, &Nm1, &x, b, noise, cond, lhits, tol, Z_2lvl, precond);
 
+    int mapsizeA = A->lcount-(A->nnz)*(A->trash_pix);
+    for(i=0; i< n_init; i++){
+      int globidx1 = old_lindices[i+(A->nnz)*old_trashpix];
+      for (int j = 0; j < mapsizeA; j++) {
+        int globidx2 = A->lindices[j+(A->nnz)*(A->trash_pix)];
+        if (globidx1 == globidx2) {
+          x[j] = x_init[i];
+        }
+      }
+    }
 
     fflush(stdout);
     t = MPI_Wtime();
@@ -84,24 +94,13 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
     // Compute RHS
     MatVecProd(A, x, _g, 0);
-    // MatVecProdwGaps(A, x, _g, 0, sampleIdx, nbsamples);
 
     for (i = 0; i < m; i++) // To Change with Sequenced Data
         _g[i] = b[i] + noise[i] - _g[i];
 
-    // for (int ispl = 0; ispl < nbsamples; ispl++) // To Change with Sequenced Data
-    // {
-    //   int begblk = A->shift[sampleIdx[ispl]  ];
-    //   int endblk = A->shift[sampleIdx[ispl]+1];
-    //   for (int j = begblk; j < endblk; j++) {
-    //     _g[j] = b[j] + noise[j] - _g[j];
-    //   }
-    // }
-
     stbmmProd(Nm1, _g); // _g = Nm1 (Ax-b)
-    // stbmmProdwGaps(Nm1, _g, nbsamples, sampleIdx); // _g = Nm1 (Ax-b)
+
     TrMatVecProd(A, _g, g, 0); // g = At _g
-    // TrMatVecProdwGaps(A, _g, g, 0, sampleIdx, nbsamples); // g = At _g
 
     apply_precond(p, A, &Nm1, g, Cg);
 
@@ -277,7 +276,7 @@ int PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     double st, t;       // timers
     double solve_time = 0.0;
     double res, res0, res_rel;
-
+    double *bcopy;
     double *_g, *ACg, *Ah, *Nm1Ah; // time domain vectors
     double *g, *gp, *gt, *Cg, *h;  // map domain vectors
     double *AtNm1Ah;               // map domain
@@ -296,7 +295,10 @@ int PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     m = A->m;
 
     st = MPI_Wtime();
-
+    bcopy = (double *) malloc(m * sizeof(double)); // copy of signal
+    for (i = 0; i < m; i++) {
+      bcopy[i] = b[i];
+    }
     if (Z_2lvl == 0) Z_2lvl = size;
     build_precond4rand(&p, &pixpond, &n, A, &Nm1, &x, b, noise, cond, lhits, tol, Z_2lvl, precond, nbsamples, sampleIdx);
 
@@ -492,7 +494,7 @@ int PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
     MatVecProd(A, x, _g, 0);
     for (i = 0; i < m; i++) // To Change with Sequenced Data
-        _g[i] = b[i] + noise[i] - _g[i];
+        _g[i] = bcopy[i] + noise[i] - _g[i];
 
     stbmmProd(Nm1, _g); // _g = Nm1 (Ax-b)
     TrMatVecProd(A, _g, g, 0); // g = At _g
@@ -520,6 +522,7 @@ int PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     free(gp);
     free(AtNm1Ah);
     free(Ah);
+    free(bcopy);
     free_precond(&p);
 
     if (rank == 0)
