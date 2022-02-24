@@ -276,7 +276,7 @@ int PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     double st, t;       // timers
     double solve_time = 0.0;
     double res, res0, res_rel;
-    double *bcopy;
+    // double *bcopy;
     double *_g, *ACg, *Ah, *Nm1Ah; // time domain vectors
     double *g, *gp, *gt, *Cg, *h;  // map domain vectors
     double *AtNm1Ah;               // map domain
@@ -295,10 +295,10 @@ int PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     m = A->m;
 
     st = MPI_Wtime();
-    bcopy = (double *) malloc(m * sizeof(double)); // copy of signal
-    for (i = 0; i < m; i++) {
-      bcopy[i] = b[i];
-    }
+    // bcopy = (double *) malloc(m * sizeof(double)); // copy of signal
+    // for (i = 0; i < m; i++) {
+    //   bcopy[i] = b[i];
+    // }
     if (Z_2lvl == 0) Z_2lvl = size;
     build_precond4rand(&p, &pixpond, &n, A, &Nm1, &x, b, noise, cond, lhits, tol, Z_2lvl, precond, nbsamples, sampleIdx);
 
@@ -492,18 +492,18 @@ int PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
     } // End loop
 
-    MatVecProd(A, x, _g, 0);
-    for (i = 0; i < m; i++) // To Change with Sequenced Data
-        _g[i] = bcopy[i] + noise[i] - _g[i];
-
-    stbmmProd(Nm1, _g); // _g = Nm1 (Ax-b)
-    TrMatVecProd(A, _g, g, 0); // g = At _g
-    localreduce = 0.0;
-    for (i = 0; i < n; i++) // g2 = (Cg, g)
-        localreduce += g[i] * g[i] * pixpond[i];
-    MPI_Allreduce(&localreduce, &res, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-    if (rank == 0)
-        printf("--> VERIF of RES on True LS PB : %e \n", res);
+    // MatVecProd(A, x, _g, 0);
+    // for (i = 0; i < m; i++) // To Change with Sequenced Data
+    //     _g[i] = bcopy[i] + noise[i] - _g[i];
+    //
+    // stbmmProd(Nm1, _g); // _g = Nm1 (Ax-b)
+    // TrMatVecProd(A, _g, g, 0); // g = At _g
+    // localreduce = 0.0;
+    // for (i = 0; i < n; i++) // g2 = (Cg, g)
+    //     localreduce += g[i] * g[i] * pixpond[i];
+    // MPI_Allreduce(&localreduce, &res, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    // if (rank == 0)
+    //     printf("--> VERIF of RES on True LS PB : %e \n", res);
 
     if (k == K) { // check unconverged
         if (rank == 0) {
@@ -522,7 +522,7 @@ int PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     free(gp);
     free(AtNm1Ah);
     free(Ah);
-    free(bcopy);
+    // free(bcopy);
     free_precond(&p);
 
     if (rank == 0)

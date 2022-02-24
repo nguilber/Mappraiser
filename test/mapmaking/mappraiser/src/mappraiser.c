@@ -37,7 +37,8 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   double	st, t;		 	//timer, start time
   int 		rank, size;
   MPI_Status status;
-
+  FILE *fp;
+  int npix = 12*pow(nside,2);
 
   //mkl_set_num_threads(1); // Circumvent an MKL bug
 
@@ -217,22 +218,49 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   if(solver == 0){
 
     PCG_GLS_rand(outpath, ref, &B, Nm1, x_B, copy_signal, noise, cond_B, lhits_B, tol, maxiter, precond, Z_2lvl, nbsamples, sampleIdx);
-    // Update with solution from previous solver
+
+
+
+
+    char filename[256];
+    double *mapI_true;
+    mapI_true = (double *) calloc(npix, sizeof(double));
+    sprintf(filename,"%s/Input_U.dat", outpath);
+    fp = fopen(filename,"r");
     int mapsizeB = B.lcount-(B.nnz)*(B.trash_pix);
-    // for(i=0; i< mapsizeB; i++){
-      // for (int j = 0; j < A.lcount; j++) {
-      //   if (B.lindices[i+(B.nnz)*(B.trash_pix)] == A.lindices[j]) {
-      //     x[j] = x_B[i];
-      //   }
-      // }
-      // x[i] = x_B[i];
-    // }
-    // int npixb4 = A.lcount;
-    // MPI_Barrier(comm);
-    PCG_GLS_true(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, precond, Z_2lvl, x_B, mapsizeB, B.lindices, B.trash_pix);
-    if (A.lcount != B.lcount) {
-      printf("************ %i Trash pixels different for A and B on rank %i\n",(A.lcount - B.lcount)/3, rank);
+    for (i = 0; i < npix; i++) {
+      fscanf(fp,"%lf", &mapI_true[i]);
+      // printf("%lf\n", mapI_true[i]);
     }
+    double nerror = 0.;
+    double truenorm = 0.;
+    double xbnorm = 0.;
+    for(i=0; i< mapsizeB/(B.nnz); i++){
+      int globidx1 = B.lindices[B.nnz*(i+(B.trash_pix))]/(B.nnz);
+      nerror += (mapI_true[globidx1]-x_B[i*(B.nnz)+2])*(mapI_true[globidx1]-x_B[i*(B.nnz)+2]);
+      truenorm += mapI_true[globidx1]*mapI_true[globidx1];
+      xbnorm += x_B[i*(B.nnz)+2]*x_B[i*(B.nnz)+2];
+      // printf("%e\n", mapI_true[globidx1]);
+      }
+      if (truenorm != 0.) {
+        nerror = sqrt(nerror/truenorm);
+        printf("Rank %d, xb norm : %e\n",rank, sqrt(xbnorm));
+        printf("Rank %d, mapI_norm : %e\n",rank, sqrt(truenorm));
+        printf("Rank %d, Error Norm on non degenerate Pixels : %e\n",rank, nerror);
+      }
+    fclose(fp);
+
+
+
+
+
+    PCG_GLS_true(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, precond, Z_2lvl, x_B, mapsizeB, B.lindices, B.trash_pix);
+    // if (A.lcount != B.lcount) {
+    //   printf("************ %i Trash pixels different for A and B on rank %i\n",(A.lcount - B.lcount)/3, rank);
+    // }
+
+
+    free(mapI_true);
   }
   else if (solver == 1)
     ECG_GLS(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, enlFac, ortho_alg, bs_red);
@@ -271,7 +299,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   }
 
   if (rank==0){
-    int npix = 12*pow(nside,2);
+    npix = 12*pow(nside,2);
     int oldsize;
 
     double *mapI;
