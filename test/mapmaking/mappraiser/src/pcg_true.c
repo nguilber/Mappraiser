@@ -136,7 +136,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     // Test if already converged
     if (rank == 0) {
         res_rel = sqrt(res) / sqrt(res0);
-	      printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", 0, res, g2pix, res_rel, t - st);
+	      printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", 0, sqrt(res), g2pix, res_rel, t - st);
         char filename[256];
         sprintf(filename,"%s/pcg_residuals_%s.dat", outpath, ref);
         fp = fopen(filename, "wb");
@@ -211,7 +211,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
         }
         if (rank == 0){ //print iterate info
 	          res_rel = sqrt(res) / sqrt(res0);
-            printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", k, res, g2pix_polak, res_rel, t - st);
+            printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", k, sqrt(res), g2pix_polak, res_rel, t - st);
             fwrite(&res_rel, sizeof(double), 1, fp);
         }
 
@@ -381,7 +381,7 @@ int PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     if (rank == 0) {
 
         res_rel = sqrt(res) / sqrt(res0);
-	      printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", 0, res, g2pix, res_rel, t - st);
+	      printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", 0, sqrt(res), g2pix, res_rel, t - st);
         char filename[256];
         sprintf(filename,"%s/rand_pcg_residuals_%s.dat", outpath, ref);
         fp = fopen(filename, "wb");
@@ -461,7 +461,7 @@ int PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
         if (rank == 0){ //print iterate info
 	          res_rel = sqrt(res) / sqrt(res0);
-            printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", k, res, g2pix_polak, res_rel, t - st);
+            printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", k, sqrt(res), g2pix_polak, res_rel, t - st);
             fwrite(&res_rel, sizeof(double), 1, fp);
         }
 

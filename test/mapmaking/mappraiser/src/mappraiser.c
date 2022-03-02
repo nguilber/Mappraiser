@@ -217,42 +217,36 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
 
   if(solver == 0){
 
-    PCG_GLS_rand(outpath, ref, &B, Nm1, x_B, copy_signal, noise, cond_B, lhits_B, tol, maxiter, precond, Z_2lvl, nbsamples, sampleIdx);
-
-
-
-
-    char filename[256];
-    double *mapI_true;
-    mapI_true = (double *) calloc(npix, sizeof(double));
-    sprintf(filename,"%s/Input_U.dat", outpath);
-    fp = fopen(filename,"r");
+    // PCG_GLS_rand(outpath, ref, &B, Nm1, x_B, copy_signal, noise, cond_B, lhits_B, tol, maxiter, precond, Z_2lvl, nbsamples, sampleIdx);
     int mapsizeB = B.lcount-(B.nnz)*(B.trash_pix);
-    for (i = 0; i < npix; i++) {
-      fscanf(fp,"%lf", &mapI_true[i]);
-      // printf("%lf\n", mapI_true[i]);
-    }
-    double nerror = 0.;
-    double truenorm = 0.;
-    double xbnorm = 0.;
-    for(i=0; i< mapsizeB/(B.nnz); i++){
-      int globidx1 = B.lindices[B.nnz*(i+(B.trash_pix))]/(B.nnz);
-      nerror += (mapI_true[globidx1]-x_B[i*(B.nnz)+2])*(mapI_true[globidx1]-x_B[i*(B.nnz)+2]);
-      truenorm += mapI_true[globidx1]*mapI_true[globidx1];
-      xbnorm += x_B[i*(B.nnz)+2]*x_B[i*(B.nnz)+2];
-      // printf("%e\n", mapI_true[globidx1]);
-      }
-      if (truenorm != 0.) {
-        nerror = sqrt(nerror/truenorm);
-        printf("Rank %d, xb norm : %e\n",rank, sqrt(xbnorm));
-        printf("Rank %d, mapI_norm : %e\n",rank, sqrt(truenorm));
-        printf("Rank %d, Error Norm on non degenerate Pixels : %e\n",rank, nerror);
-      }
-    fclose(fp);
 
-
-
-
+    // char filename[256];
+    // double *mapI_true;
+    // mapI_true = (double *) calloc(npix, sizeof(double));
+    // sprintf(filename,"%s/Input_U.dat", outpath);
+    // fp = fopen(filename,"r");
+    // for (i = 0; i < npix; i++) {
+    //   fscanf(fp,"%lf", &mapI_true[i]);
+    //   // printf("%lf\n", mapI_true[i]);
+    // }
+    // double nerror = 0.;
+    // double truenorm = 0.;
+    // double xbnorm = 0.;
+    // for(i=0; i< mapsizeB/(B.nnz); i++){
+    //   int globidx1 = B.lindices[B.nnz*(i+(B.trash_pix))]/(B.nnz);
+    //   nerror += (mapI_true[globidx1]-x_B[i*(B.nnz)+2])*(mapI_true[globidx1]-x_B[i*(B.nnz)+2]);
+    //   truenorm += mapI_true[globidx1]*mapI_true[globidx1];
+    //   xbnorm += x_B[i*(B.nnz)+2]*x_B[i*(B.nnz)+2];
+    //   // printf("%e\n", mapI_true[globidx1]);
+    //   }
+    //   if (truenorm != 0.) {
+    //     nerror = sqrt(nerror/truenorm);
+    //     printf("Rank %d, xb norm : %e\n",rank, sqrt(xbnorm));
+    //     printf("Rank %d, mapI_norm : %e\n",rank, sqrt(truenorm));
+    //     printf("Rank %d, Error Norm on non degenerate Pixels : %e\n",rank, nerror);
+    //   }
+    // fclose(fp);
+    // free(mapI_true);
 
     PCG_GLS_true(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, precond, Z_2lvl, x_B, mapsizeB, B.lindices, B.trash_pix);
     // if (A.lcount != B.lcount) {
@@ -260,7 +254,6 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
     // }
 
 
-    free(mapI_true);
   }
   else if (solver == 1)
     ECG_GLS(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, enlFac, ortho_alg, bs_red);
