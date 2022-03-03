@@ -1939,7 +1939,7 @@ void Lanczos_eigWGaps(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ
 
 
 // General routine for constructing a preconditioner
-void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat *A, Tpltz *Nm1, double **in_out_x, double *b, const double *noise, double *cond, int *lhits, double tol, int Zn, int precond)
+void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat *A, Tpltz *Nm1, double **in_out_x, double *b, const double *noise, double *cond, int *lhits, double tol, int Zn, int precond, int nbsamples, int *sampleIdx)
 {
   int rank, size, i;
   MPI_Comm_rank(A->comm, &rank);
@@ -1989,7 +1989,7 @@ void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat
     // 2lvl a posteriori
     else if (precond == 2)
       Lanczos_eig(A, Nm1, &(p->BJ_inv), &(p->BJ), x, b, noise, tol, p->pixpond, Zn, &(p->Z), &(p->AZ)); // 2lvl a posteriori preconditioner
-
+      // Lanczos_eigWGaps(A, Nm1, &(p->BJ_inv), &(p->BJ), x, b, noise, tol, p->pixpond, Zn, &(p->Z), &(p->AZ), nbsamples, sampleIdx);
     // Invalid precond
     else {
       printf("Whoops! Incorrect preconditioner parameter, please check documentation and try again: %d\n", precond);
