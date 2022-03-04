@@ -23,7 +23,7 @@
 
 int x2map_pol( double *mapI, double *mapQ, double *mapU, double *Cond, int * hits, int npix, double *x, int *lstid, double *cond, int *lhits, int xsize);
 
-void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int Z_2lvl, int pointing_commflag, double tol, int maxiter, int enlFac, int ortho_alg, int bs_red, int nside, void *data_size_proc, int nb_blocks_loc, void *local_blocks_sizes, int Nnz, void *pix, void *pixweights, void *signal, double *noise, int lambda, double *invtt)
+void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int Z_2lvl, int pointing_commflag, double tol, int maxiter, int enlFac, int ortho_alg, int bs_red, int nside, void *data_size_proc, int nb_blocks_loc, void *local_blocks_sizes, int Nnz, void *pix, void *pixweights, void *signal, double *noise, int lambda, double *invtt, void *Neighbours)
 {
   int64_t	M;       //Global number of rows
   int		m, Nb_t_Intervals;  //local number of rows of the pointing matrix A, nbr of stationary intervals
@@ -203,8 +203,13 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   }
 
   MPI_Barrier(comm);
-  if(rank==0)
+  if(rank==0){
+    for (int i = 0; i < 8; i++) {
+      printf(" %d,", ((int*)Neighbours)[i]);
+    }
+    printf(" \n");
     printf("##### Start PCG ####################\n");
+  }
   fflush(stdout);
 
   st=MPI_Wtime();
@@ -252,8 +257,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
     // if (A.lcount != B.lcount) {
       // printf("************ %i Trash pixels different for A and B on rank %i\n",(A.lcount - B.lcount)/3, rank);
     // }
-    printf("************ %i Trash pixels on rank %i\n", A.lcount/3, rank);
-
+    // printf("************ %i Trash pixels on rank %i\n", A.lcount/3, rank);
 
   }
   else if (solver == 1)

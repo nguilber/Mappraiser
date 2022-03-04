@@ -240,7 +240,6 @@ class OpMappraiser(Operator):
             dets,
             nside,
         )
-
         self._MLmap(data_size_proc, nobsloc*ndet, local_blocks_sizes, nnz)
 
         self._unstage_data(
@@ -266,6 +265,18 @@ class OpMappraiser(Operator):
 
         # Compute the Maximum Likelihood map
         # os.environ["OMP_NUM_THREADS"] = "1"
+        nside = int(self._params["nside"])
+        Neighboursarray = np.asarray(hp.get_all_neighbours(nside,sorted(list(set((self._mappraiser_pixels)//3)))))
+        if self._rank == 0:
+            print(" ++++++++++++++ COUCOU +++++++++++++++")
+            print(Neighboursarray[:,0])
+        Neighboursarray = Neighboursarray.flatten(order='F')
+        Neighbours = self._cache.create("neighbours", mappraiser.PIXEL_TYPE, (len(Neighboursarray),))
+        Neighbours[:] = Neighboursarray[:]
+
+        # print(Neighbours.shape)
+        # print(type(Neighbours))
+
         mappraiser.MLmap(
             self._comm,
             self._params,
@@ -279,7 +290,7 @@ class OpMappraiser(Operator):
             self._mappraiser_noise,
             self._params["Lambda"],
             self._mappraiser_invtt,
-            )
+            Neighbours)
         # os.environ["OMP_NUM_THREADS"] = "4"
 
         return

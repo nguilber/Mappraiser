@@ -13,6 +13,7 @@ from mpi4py import MPI
 
 SIGNAL_TYPE = np.float64
 PIXEL_TYPE = np.int32
+NEIGHBOURS_TYPE = np.int32
 WEIGHT_TYPE = np.float64
 INVTT_TYPE = np.float64
 TIMESTAMP_TYPE = np.float64
@@ -24,7 +25,7 @@ except OSError:
     path = ctu.find_library("mappraiser")
     if path is not None:
         _mappraiser = ct.CDLL(path)
-        
+
 available = _mappraiser is not None
 
 try:
@@ -68,9 +69,10 @@ _mappraiser.MLmap.argtypes =[
     npc.ndpointer(dtype=SIGNAL_TYPE, ndim=1, flags="C_CONTIGUOUS"),
     ct.c_int, #lambda
     npc.ndpointer(dtype=INVTT_TYPE, ndim=1, flags="C_CONTIGUOUS"),
+    npc.ndpointer(dtype=np.int32, ndim=1, flags="C_CONTIGUOUS"),
 ]
 
-def MLmap(comm, params, data_size_proc, nb_blocks_loc, local_blocks_sizes, Nnz, pixels, pixweights, signal, noise, Lambda, invtt):
+def MLmap(comm, params, data_size_proc, nb_blocks_loc, local_blocks_sizes, Nnz, pixels, pixweights, signal, noise, Lambda, invtt, Neighbours):
     """
     Compute the MLMV solution of the GLS estimator, assuming uniform detector weighting and a single PSD
     For all stationary intervals. (These assumptions will be removed in future updates)
@@ -79,5 +81,5 @@ def MLmap(comm, params, data_size_proc, nb_blocks_loc, local_blocks_sizes, Nnz, 
         raise RuntimeError("No libmappraiser available, cannot reconstruct the map")
     outpath = params["output"].encode('ascii')
     ref = params["ref"].encode('ascii')
-    _mappraiser.MLmap(encode_comm(comm), outpath, ref, params["solver"], params["precond"], params["Z_2lvl"], params["pointing_commflag"], params["tol"], params["maxiter"], params["enlFac"], params["ortho_alg"], params["bs_red"], params["nside"], data_size_proc, nb_blocks_loc, local_blocks_sizes, Nnz, pixels, pixweights, signal, noise, Lambda, invtt)
+    _mappraiser.MLmap(encode_comm(comm), outpath, ref, params["solver"], params["precond"], params["Z_2lvl"], params["pointing_commflag"], params["tol"], params["maxiter"], params["enlFac"], params["ortho_alg"], params["bs_red"], params["nside"], data_size_proc, nb_blocks_loc, local_blocks_sizes, Nnz, pixels, pixweights, signal, noise, Lambda, invtt, Neighbours)
     return
