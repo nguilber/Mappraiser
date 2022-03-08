@@ -21,7 +21,7 @@
 #include "midapack.h"
 #include "mappraiser.h"
 
-int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl, double *x_init, int n_init, int* old_lindices, int old_trashpix, int nbsamples, int *sampleIdx)
+int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl, double *x_init, int n_init, int* old_lindices, int old_trashpix, int nbsamples, int *sampleIdx, int *Neighbours)
 {
     int rank, size;
     MPI_Comm_rank(A->comm, &rank);
@@ -56,18 +56,35 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     st = MPI_Wtime();
 
     if (Z_2lvl == 0) Z_2lvl = size;
-    build_precond(&p, &pixpond, &n, A, &Nm1, &x, b, noise, cond, lhits, tol, Z_2lvl, precond, nbsamples, sampleIdx);
+    int old_npix = A->lcount/A->nnz;
+    int *old2new = (int *) malloc(old_npix * sizeof(int)); // old num to new num
 
-    int mapsizeA = A->lcount-(A->nnz)*(A->trash_pix);
-    for(i=0; i< n_init; i++){
-      int globidx1 = old_lindices[i+(A->nnz)*old_trashpix];
-      for (int j = 0; j < mapsizeA; j++) {
-        int globidx2 = A->lindices[j+(A->nnz)*(A->trash_pix)];
-        if (globidx1 == globidx2) {
-          x[j] = x_init[i];
+    build_precond(&p, &pixpond, &n, A, &Nm1, &x, b, noise, cond, lhits, tol, Z_2lvl, precond, nbsamples, sampleIdx, old2new);
+    int mapsizeA = (A->lcount-(A->nnz)*(A->trash_pix))/(A->nnz);
+    for (int i = 0; i < mapsizeA; i++) {
+      for (int j = 0; j < old_npix; j++) {
+        if (old2new[i] == (A->lindices[j*(A->nnz)]/(A->nnz)))
+        {
+          old2new[i] = j;
+          // if (rank == 0) {
+          //   printf("index old2new %i\n", i);
+          // }
         }
       }
     }
+    Update_Initial_Guess(x_init, n_init, x, Neighbours, old_lindices, old_npix, old_trashpix, A, old2new);
+    // int mapsizeA = A->lcount-(A->nnz)*(A->trash_pix);
+    // for(i=0; i< n_init; i++){
+    //   int globidx1 = old_lindices[i+(A->nnz)*old_trashpix];
+    //   for (int j = 0; j < mapsizeA; j++) {
+    //     int globidx2 = A->lindices[j+(A->nnz)*(A->trash_pix)];
+    //     if (globidx1 == globidx2) {
+    //       x[j] = x_init[i];
+    //     }
+    //   }
+    // }
+
+
 
     fflush(stdout);
     t = MPI_Wtime();
@@ -256,6 +273,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     free(gp);
     free(AtNm1Ah);
     free(Ah);
+    free(old2new);
     free_precond(&p);
 
     return 0;

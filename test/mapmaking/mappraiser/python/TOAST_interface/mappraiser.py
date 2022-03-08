@@ -267,10 +267,11 @@ class OpMappraiser(Operator):
         # os.environ["OMP_NUM_THREADS"] = "1"
         nside = int(self._params["nside"])
         Neighboursarray = np.asarray(hp.get_all_neighbours(nside,sorted(list(set((self._mappraiser_pixels)//3)))))
+        Neighboursarray = Neighboursarray.flatten(order='F')
         if self._rank == 0:
             print(" ++++++++++++++ COUCOU +++++++++++++++")
-            print(Neighboursarray[:,0])
-        Neighboursarray = Neighboursarray.flatten(order='F')
+            print(len(Neighboursarray)//8)
+            print(Neighboursarray[0:30])
         Neighbours = self._cache.create("neighbours", mappraiser.PIXEL_TYPE, (len(Neighboursarray),))
         Neighbours[:] = Neighboursarray[:]
 

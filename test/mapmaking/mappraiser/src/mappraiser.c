@@ -204,9 +204,9 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
 
   MPI_Barrier(comm);
   if(rank==0){
-    for (int i = 0; i < 8; i++) {
-      printf(" %d,", ((int*)Neighbours)[i]);
-    }
+    // for (int i = 0; i < 8; i++) {
+    //   printf(" %d,", ((int*)Neighbours)[i]);
+    // }
     printf(" \n");
     printf("##### Start PCG ####################\n");
   }
@@ -253,7 +253,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
     // fclose(fp);
     // free(mapI_true);
 
-    PCG_GLS_true(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, precond, Z_2lvl, x_B, mapsizeB, B.lindices, B.trash_pix, nbsamples, sampleIdx);
+    PCG_GLS_true(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, precond, Z_2lvl, x_B, mapsizeB, B.lindices, B.trash_pix, nbsamples, sampleIdx, Neighbours);
     // if (A.lcount != B.lcount) {
       // printf("************ %i Trash pixels different for A and B on rank %i\n",(A.lcount - B.lcount)/3, rank);
     // }

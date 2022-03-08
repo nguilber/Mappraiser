@@ -568,7 +568,7 @@ int get_pixshare_pond(Mat *A, double *pixpond )
 }
 
 //Block diagonal jacobi preconditioner with degenrate pixels pre-processing
-int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, double *cond, int *lhits)
+int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, double *cond, int *lhits, int *old2new)
 {
   int           i, j, k ;                       // some indexes
   int           m, m_cut, n, rank, size;
@@ -676,6 +676,7 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
       block[0][1] * (block[1][0] * block[2][2] - block[1][2] * block[2][0]) +
       block[0][2] * (block[1][0] * block[2][1] - block[1][1] * block[2][0]);
 
+    int ipixel = (int)uncut_pixel_index/((A->nnz)*(A->nnz));
     if(rcond > 1e-1){
       invdet = 1 / det;
 
@@ -726,6 +727,7 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
       i -= (A->nnz)*(A->nnz);
     }
     uncut_pixel_index += (A->nnz)*(A->nnz);
+    old2new[ipixel] = A->lindices[ipixel*(A->nnz)]/(A->nnz);
   }
   // free memory
 
@@ -1939,7 +1941,7 @@ void Lanczos_eigWGaps(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ
 
 
 // General routine for constructing a preconditioner
-void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat *A, Tpltz *Nm1, double **in_out_x, double *b, const double *noise, double *cond, int *lhits, double tol, int Zn, int precond, int nbsamples, int *sampleIdx)
+void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat *A, Tpltz *Nm1, double **in_out_x, double *b, const double *noise, double *cond, int *lhits, double tol, int Zn, int precond, int nbsamples, int *sampleIdx, int* old2new)
 {
   int rank, size, i;
   MPI_Comm_rank(A->comm, &rank);
@@ -1956,7 +1958,7 @@ void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat
   p->precond = precond;
   p->Zn = Zn;
 
-  precondblockjacobilike(A, *Nm1, &(p->BJ_inv), &(p->BJ), b, cond, lhits);
+  precondblockjacobilike(A, *Nm1, &(p->BJ_inv), &(p->BJ), b, cond, lhits, old2new);
 
   p->n = (A->lcount) - (A->nnz) * (A->trash_pix);
 

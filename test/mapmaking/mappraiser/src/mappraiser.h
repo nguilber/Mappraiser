@@ -38,11 +38,11 @@ void write_map (void *signal, int type, long nside, const char *filename,
 struct Precond;
 
 // Block-Jacobi preconditioner
-int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, double *cond, int *lhits);
+int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, double *cond, int *lhits, int *old2new);
 int precondblockjacobilikewGaps(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, double *cond, int *lhits, int nbsamples, int* sampleIdx);
 
 // Preconditioner constructor
-void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat *A, Tpltz *Nm1, double **in_out_x, double *b, const double *noise, double *cond, int *lhits, double tol, int Zn, int precond, int nbsamples, int *sampleIdx);
+void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat *A, Tpltz *Nm1, double **in_out_x, double *b, const double *noise, double *cond, int *lhits, double tol, int Zn, int precond, int nbsamples, int *sampleIdx, int *old2new);
 
 void build_precond4rand(struct Precond **out_p, double **out_pixpond, int *out_n, Mat *A, Tpltz *Nm1, double **in_out_x, double *b, const double *noise, double *cond, int *lhits, double tol, int Zn, int precond, int nbsamples, int* sampleIdx);
 
@@ -58,7 +58,7 @@ void free_precond(struct Precond **in_out_p);
 int get_pixshare_pond(Mat *A, double *pixpond);
 
 //PCG routine
-int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl, double *x_init, int n_init, int* old_lindices, int old_trashpix, int nbsamples, int *sampleIdx);
+int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl, double *x_init, int n_init, int* old_lindices, int old_trashpix, int nbsamples, int *sampleIdx, int *Neighbours);
 
 //PCG on randomized GLS pb
 int PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl, int nbsamples, int* sampleIdx);
@@ -68,3 +68,6 @@ int ECG_GLS(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, d
 
 // Analyze Block Toeplitz and Sample Blocks
 int prepare_Rand_GLS(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *b, double *noise, double *cond, int* sampleIdx);
+
+// Update initial guess with a solution of previous randomized GLS problem
+void Update_Initial_Guess(double *x_init, int n_init, double *x, int* Neighbours, int* old_lindices, int old_npix, int old_trashpix, Mat *A, int *old2new);

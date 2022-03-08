@@ -9,8 +9,30 @@
 
 #include <stdlib.h>
 
-/* Prototype binary search function */
-int dichotomy(int nT, int *T, int e);
+// /* Prototype binary search function */
+// int dichotomy(int nT, int *T, int e);
+
+/** dichotmic search of an integer in a monotony array
+    @param number elemnent array of values
+    @param monotony array
+    @param element to search
+    @return index of searched element*/
+int dichotomy(int nT, int *T, int e){
+  int min, max, pivot;
+  min=0;
+  max=nT-1;
+  pivot=(max-min)/2;
+  while(e != T[pivot] && max > min ){
+    if(T[pivot]<e){
+      min=pivot+1;
+    }
+    else{
+      max=pivot;
+    }
+    pivot= min + (max-min)/2;
+  }
+  return pivot;
+}
 
 /** Sequential reindexing
     @param T monotony array
@@ -83,27 +105,3 @@ int omp_pindex(int *T, int nT, int *A, int nA){
   return 0;
 }
 #endif
-
-
-
-/** dichotmic search of an integer in a monotony array
-    @param number elemnent array of values
-    @param monotony array
-    @param element to search
-    @return index of searched element*/
-int dichotomy(int nT, int *T, int e){
-  int min, max, pivot;
-  min=0;
-  max=nT-1;
-  pivot=(max-min)/2;
-  while(e != T[pivot] && max > min ){
-    if(T[pivot]<e){
-      min=pivot+1;
-    }
-    else{
-      max=pivot;
-    }
-    pivot= min + (max-min)/2;
-  }
-  return pivot;
-}
