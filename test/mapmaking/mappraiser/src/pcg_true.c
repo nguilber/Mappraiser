@@ -57,15 +57,16 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
     if (Z_2lvl == 0) Z_2lvl = size;
     int old_npix = A->lcount/A->nnz;
-    int *old2new = (int *) malloc(old_npix * sizeof(int)); // old num to new num
+    int *oldlindices = (int *) malloc(old_npix * sizeof(int)); // old num to new num
 
-    build_precond(&p, &pixpond, &n, A, &Nm1, &x, b, noise, cond, lhits, tol, Z_2lvl, precond, nbsamples, sampleIdx, old2new);
+    build_precond(&p, &pixpond, &n, A, &Nm1, &x, b, noise, cond, lhits, tol, Z_2lvl, precond, nbsamples, sampleIdx, oldlindices);
     int mapsizeA = (A->lcount-(A->nnz)*(A->trash_pix))/(A->nnz);
-    for (int i = 0; i < mapsizeA; i++) {
-      for (int j = 0; j < old_npix; j++) {
-        if (old2new[i] == (A->lindices[j*(A->nnz)]/(A->nnz)))
+    int *old2new     = (int *) malloc(mapsizeA * sizeof(int)); // old num to new num
+    for (int i = 0; i < old_npix; i++) {
+      for (int j = 0; j < mapsizeA; j++) {
+        if (oldlindices[i] == (A->lindices[(A->nnz)*(j+(A->trash_pix))]/(A->nnz)))
         {
-          old2new[i] = j;
+          old2new[j] = i;
           // if (rank == 0) {
           //   printf("index old2new %i\n", i);
           // }
@@ -112,7 +113,8 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     MatVecProd(A, x, _g, 0);
 
     for (i = 0; i < m; i++) // To Change with Sequenced Data
-        _g[i] = b[i] + noise[i] - _g[i];
+      _g[i] = b[i] + noise[i] - _g[i];
+        // _g[i] = b[i] + noise[i];
 
     stbmmProd(Nm1, _g); // _g = Nm1 (Ax-b)
 
@@ -152,7 +154,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     // Test if already converged
     if (rank == 0) {
         res_rel = sqrt(res) / sqrt(res0);
-	      printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", 0, sqrt(res), g2pix, res_rel, t - st);
+	      printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", 0, res, g2pix, res_rel, t - st);
         char filename[256];
         sprintf(filename,"%s/pcg_residuals_%s.dat", outpath, ref);
         fp = fopen(filename, "wb");
@@ -227,7 +229,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
         }
         if (rank == 0){ //print iterate info
 	          res_rel = sqrt(res) / sqrt(res0);
-            printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", k, sqrt(res), g2pix_polak, res_rel, t - st);
+            printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", k, res, g2pix_polak, res_rel, t - st);
             fwrite(&res_rel, sizeof(double), 1, fp);
         }
 
@@ -274,6 +276,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     free(AtNm1Ah);
     free(Ah);
     free(old2new);
+    free(oldlindices);
     free_precond(&p);
 
     return 0;
@@ -398,7 +401,7 @@ int PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     if (rank == 0) {
 
         res_rel = sqrt(res) / sqrt(res0);
-	      printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", 0, sqrt(res), g2pix, res_rel, t - st);
+	      printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", 0, res, g2pix, res_rel, t - st);
         char filename[256];
         sprintf(filename,"%s/rand_pcg_residuals_%s.dat", outpath, ref);
         fp = fopen(filename, "wb");
@@ -478,7 +481,7 @@ int PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
         if (rank == 0){ //print iterate info
 	          res_rel = sqrt(res) / sqrt(res0);
-            printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", k, sqrt(res), g2pix_polak, res_rel, t - st);
+            printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", k, res, g2pix_polak, res_rel, t - st);
             fwrite(&res_rel, sizeof(double), 1, fp);
         }
 

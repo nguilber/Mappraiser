@@ -266,12 +266,16 @@ class OpMappraiser(Operator):
         # Compute the Maximum Likelihood map
         # os.environ["OMP_NUM_THREADS"] = "1"
         nside = int(self._params["nside"])
-        Neighboursarray = np.asarray(hp.get_all_neighbours(nside,sorted(list(set((self._mappraiser_pixels)//3)))))
+        lindices = sorted(list(set((self._mappraiser_pixels)//3)))
+        # Neighboursarray = np.asarray(hp.get_all_neighbours(nside,lindices))
+        Neighboursarray, Weightsarray = hp.get_interp_weights(nside,lindices)
         Neighboursarray = Neighboursarray.flatten(order='F')
-        if self._rank == 0:
-            print(" ++++++++++++++ COUCOU +++++++++++++++")
-            print(len(Neighboursarray)//8)
-            print(Neighboursarray[0:30])
+        Weightsarray = Weightsarray.flatten(order='F')
+        # if self._rank == 0:
+            # print(" ++++++++++++++ COUCOU +++++++++++++++")
+            # print(len(Neighboursarray)//4)
+            # print(Neighboursarray[0:200])
+            # print(Weightsarray[500:700])
         Neighbours = self._cache.create("neighbours", mappraiser.PIXEL_TYPE, (len(Neighboursarray),))
         Neighbours[:] = Neighboursarray[:]
 

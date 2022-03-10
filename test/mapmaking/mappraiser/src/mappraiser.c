@@ -222,7 +222,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
 
   if(solver == 0){
 
-    // PCG_GLS_rand(outpath, ref, &B, Nm1, x_B, copy_signal, noise, cond_B, lhits_B, tol, maxiter, precond, Z_2lvl, nbsamples, sampleIdx);
+    PCG_GLS_rand(outpath, ref, &B, Nm1, x_B, copy_signal, noise, cond_B, lhits_B, tol, maxiter, precond, Z_2lvl, nbsamples, sampleIdx);
     int mapsizeB = B.lcount-(B.nnz)*(B.trash_pix);
 
     // char filename[256];
