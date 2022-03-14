@@ -26,6 +26,10 @@ def add_mappraiser_args(parser):
     )
     parser.add_argument("--Lambda", required=False, default=16384, type=np.int, help="Half bandwidth (lambda) of noise covariance"
     )
+
+    parser.add_argument("--epsilon-noise", required=False, default=0.0, type=np.double, help="Fractional noise difference"
+    )
+
     parser.add_argument(
         "--pair-diff",
         dest="pair_diff",
@@ -105,6 +109,7 @@ def setup_mappraiser(args):
 
     params["nside"] = args.nside
     params["Lambda"] = args.Lambda
+    params["epsilon-noise"] = args.epsilon_noise
     params["samplerate"] = args.sample_rate
     params["output"] = args.outpath
     params["ref"] = args.ref

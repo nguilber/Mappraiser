@@ -405,8 +405,7 @@ class OpMappraiser(Operator):
 
 
         # Fit the psd model to the periodogram (in log scale)
-        popt,pcov = curve_fit(logpsd_model,f[1:],np.log10(psd[1:]),p0=np.array([-7, -0.5, 0.5, 0.1]), bounds=([-np.inf, -np.inf, 0., 0.], [0., 0., np.inf, 1.]))
-        # popt[1] = -5.
+        popt,pcov = curve_fit(logpsd_model,f[1:],np.log10(psd[1:]),p0=np.array([-7, -1.0, 0.1, 0.]), bounds=([-20, -10, 0., 0.], [0., 0., 10, 0.001]), maxfev = 1000)        # popt[1] = -5.
         # popt[2] = 2.
         if self._rank == 0 and idet == 0:
             print("\n[det "+str(idet)+"]: PSD fit log(sigma2) = %1.2f, alpha = %1.2f, fknee = %1.2f, fmin = %1.2f\n" % tuple(popt), flush=True)
@@ -739,7 +738,9 @@ class OpMappraiser(Operator):
                                 noise_0 = tod.local_signal(det, self._noise_name)
                                 noise_dtype = noise_0.dtype
                             if (idet % 2) == 1:
-                                noise_1 = tod.local_signal(det, self._noise_name)
+                                # noise_1 = tod.local_signal(det, self._noise_name)
+                                epsilon = self._params["epsilon-noise"]
+                                noise_1 = noise_0 * np.sqrt((1-epsilon/2)/(1+epsilon/2))
                                 noise_dtype = noise_1.dtype
                                 offset = global_offset
                                 nn = len(noise_0)
