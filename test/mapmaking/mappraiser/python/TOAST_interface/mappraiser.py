@@ -736,7 +736,9 @@ class OpMappraiser(Operator):
                                 noise_0 = tod.local_signal(det, self._noise_name)
                                 noise_dtype = noise_0.dtype
                             if (idet % 2) == 1:
-                                noise_1 = tod.local_signal(det, self._noise_name)
+                                # noise_1 = tod.local_signal(det, self._noise_name)
+                                epsilon = self._params["epsilon-noise"]
+                                noise_1 = noise_0 * np.sqrt((1-epsilon/2)/(1+epsilon/2))
                                 noise_dtype = noise_1.dtype
                                 offset = global_offset
                                 nn = len(noise_0)

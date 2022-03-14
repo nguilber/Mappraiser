@@ -28,6 +28,10 @@ def add_mappraiser_args(parser):
     )
     parser.add_argument("--uniform_w", required=False, default=0, type=np.int, help="Activate for uniform white noise model: 0->off, 1->on"
     )
+
+    parser.add_argument("--epsilon-noise", required=False, default=0.0, type=np.double, help="Fractional noise difference"
+    )
+
     parser.add_argument(
         "--pair-diff",
         dest="pair_diff",
@@ -112,6 +116,7 @@ def setup_mappraiser(args):
     params["nside"] = args.nside
     params["Lambda"] = args.Lambda
     params["uniform_w"] = args.uniform_w
+    params["epsilon-noise"] = args.epsilon_noise
     params["samplerate"] = args.sample_rate
     params["output"] = args.outpath
     params["ref"] = args.ref
