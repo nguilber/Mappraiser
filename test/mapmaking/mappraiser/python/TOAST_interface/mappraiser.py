@@ -699,6 +699,7 @@ class OpMappraiser(Operator):
 
                 global_offset = 0
                 invtt_list = []
+                epsilon = self._params["epsilon-noise"]
                 # fknee_list = []
                 # fmin_list = []
                 # alpha_list = []
@@ -710,6 +711,9 @@ class OpMappraiser(Operator):
                         for idet, det in enumerate(detectors):
                             # Get the signal.
                             noise = tod.local_signal(det, self._noise_name)
+                            if (idet % 2) == 1 and epsilon is not None:
+                                # effectively change noise rms of odd-index detectors according to wanted fractional difference
+                                noise *= np.sqrt((1-epsilon/2)/(1+epsilon/2))
                             noise_dtype = noise.dtype
                             offset = global_offset
                             nn = len(noise)
@@ -736,9 +740,10 @@ class OpMappraiser(Operator):
                                 noise_0 = tod.local_signal(det, self._noise_name)
                                 noise_dtype = noise_0.dtype
                             if (idet % 2) == 1:
-                                # noise_1 = tod.local_signal(det, self._noise_name)
-                                epsilon = self._params["epsilon-noise"]
-                                noise_1 = noise_0 * np.sqrt((1-epsilon/2)/(1+epsilon/2))
+                                noise_1 = tod.local_signal(det, self._noise_name)
+                                if epsilon is not None:
+                                    # effectively change noise rms of odd-index detectors according to wanted fractional difference
+                                    noise_1 *= np.sqrt((1-epsilon/2)/(1+epsilon/2))
                                 noise_dtype = noise_1.dtype
                                 offset = global_offset
                                 nn = len(noise_0)
