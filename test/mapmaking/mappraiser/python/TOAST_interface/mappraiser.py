@@ -748,6 +748,7 @@ class OpMappraiser(Operator):
                             # Get the signal.
                             if (idet % 2) == 0:
                                 noise_0 = tod.local_signal(det, self._noise_name)
+                                nn = len(noise_0)
                                 if white_noise:
                                     wnoise_0 = np.random.standard_normal(nn) * np.std(noise_0)
                                 else:
@@ -757,7 +758,7 @@ class OpMappraiser(Operator):
                                 noise_1 = tod.local_signal(det, self._noise_name)
                                 noise_dtype = noise_1.dtype
                                 offset = global_offset
-                                nn = len(wnoise_0)
+                                nn = len(noise_0)
                                 if white_noise:
                                     wnoise_1 = np.random.standard_normal(nn) * np.std(noise_1)
                                 else:
