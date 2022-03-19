@@ -22,16 +22,17 @@ def add_mappraiser_args(parser):
     parser.add_argument(
         "--outpath", required=False, default="./", help="Output path"
     )
-    parser.add_argument("--ref", required=False, default="run0", help="Output maps references"
-    )
-    parser.add_argument("--Lambda", required=False, default=16384, type=np.int, help="Half bandwidth (lambda) of noise covariance"
+    parser.add_argument(
+        "--ref", required=False, default="run0", help="Output maps references"
     )
     parser.add_argument("--uniform_w", required=False, default=0, type=np.int, help="Activate for uniform white noise model: 0->off, 1->on"
     )
-
     parser.add_argument("--epsilon-noise", required=False, default=0.0, type=np.double, help="Fractional noise difference"
     )
-
+    parser.add_argument(
+        "--Lambda", required=False, default=16384, type=np.int,
+        help="Half bandwidth (lambda) of noise covariance"
+    )
     parser.add_argument(
         "--pair-diff",
         dest="pair_diff",
@@ -39,7 +40,9 @@ def add_mappraiser_args(parser):
         action="store_true",
         help="Process differenced TOD [default]",
     )
-    parser.add_argument("--solver", required=False, default=0, type=np.int, help="Choose map-making solver: 0->PCG, 1->ECG"
+    parser.add_argument(
+        "--solver", required=False, default=0, type=np.int,
+        help="Choose map-making solver: 0->PCG, 1->ECG"
     )
     parser.add_argument("--precond", required=False, default=0, type=np.int, help="Choose map-making preconditioner: 0->BD, 1->2lvl a priori, 2->2lvl a posteriori"
     )
@@ -47,7 +50,9 @@ def add_mappraiser_args(parser):
     )
     parser.add_argument("--ptcomm_flag", required=False, default=6, type=np.int, help="Choose collective communication scheme"
     )
-    parser.add_argument("--tol", required=False, default=1e-6, type=np.double, help="Tolerance parameter for convergence"
+    parser.add_argument(
+        "--tol", required=False, default=1e-6, type=np.double,
+        help="Tolerance parameter for convergence"
     )
     parser.add_argument("--maxiter", required=False, default=500, type=np.int, help="Maximum number of iterations in Mappraiser"
     )
@@ -102,6 +107,17 @@ def add_mappraiser_args(parser):
         )
     except argparse.ArgumentError:
         pass
+
+    parser.add_argument(
+        "--epsilon_frac", required=False, default=0.0, type=np.double,
+        help="Fractional noise difference"
+    )
+
+    parser.add_argument(
+        "--white_noise", required=False, default=False, type=np.bool_,
+        help="Generate simple white noise"
+    )
+
     return
 
 @function_timer
@@ -129,6 +145,9 @@ def setup_mappraiser(args):
     params["enlFac"] = args.enlFac
     params["ortho_alg"] = args.ortho_alg
     params["bs_red"] = args.bs_red
+
+    params["epsilon_frac"] = args.epsilon_frac
+    params["white_noise"] = args.white_noise
 
     return params
 

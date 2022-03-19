@@ -699,7 +699,8 @@ class OpMappraiser(Operator):
 
                 global_offset = 0
                 invtt_list = []
-                epsilon = self._params["epsilon-noise"]
+                epsilon = self._params["epsilon_frac"]
+                white_noise = self._params["white_noise"]
                 # fknee_list = []
                 # fmin_list = []
                 # alpha_list = []
@@ -711,20 +712,29 @@ class OpMappraiser(Operator):
                         for idet, det in enumerate(detectors):
                             # Get the signal.
                             noise = tod.local_signal(det, self._noise_name)
-                            if (idet % 2) == 1 and epsilon is not None:
-                                # effectively change noise rms of odd-index detectors according to wanted fractional difference
-                                noise *= np.sqrt((1-epsilon/2)/(1+epsilon/2))
                             noise_dtype = noise.dtype
                             offset = global_offset
                             nn = len(noise)
-                            invtt = self._noise2invtt(noise, nn, idet)
+
+                            if white_noise:
+                                wnoise = np.random.standard_normal(nn) * np.std(noise)
+                            else:
+                                wnoise = noise
+                            
+                            if (idet % 2) == 1 and epsilon is not None:
+                                # effectively change noise rms of odd-index detectors
+                                # according to wanted fractional difference
+                                wnoise *= np.sqrt((1-epsilon/2)/(1+epsilon/2))
+
+                            invtt = self._noise2invtt(wnoise, nn, idet)
                             invtt_list.append(invtt)
                             dslice = slice(idet * nsamp + offset, idet * nsamp + offset + nn)
-                            self._mappraiser_noise[dslice] = noise
+                            self._mappraiser_noise[dslice] = wnoise
                             offset += nn
 
 
                             del noise
+                            del wnoise
                         # Purge only after all detectors are staged in case some are aliased
                         # cache.clear() will not fail if the object was already
                         # deleted as an alias
@@ -738,22 +748,34 @@ class OpMappraiser(Operator):
                             # Get the signal.
                             if (idet % 2) == 0:
                                 noise_0 = tod.local_signal(det, self._noise_name)
+                                if white_noise:
+                                    wnoise_0 = np.random.standard_normal(nn) * np.std(noise_0)
+                                else:
+                                    wnoise_0 = noise_0
                                 noise_dtype = noise_0.dtype
                             if (idet % 2) == 1:
                                 noise_1 = tod.local_signal(det, self._noise_name)
-                                if epsilon is not None:
-                                    # effectively change noise rms of odd-index detectors according to wanted fractional difference
-                                    noise_1 *= np.sqrt((1-epsilon/2)/(1+epsilon/2))
                                 noise_dtype = noise_1.dtype
                                 offset = global_offset
-                                nn = len(noise_0)
-                                invtt = self._noise2invtt(0.5*(noise_0-noise_1), nn, int(idet/2))
+                                nn = len(wnoise_0)
+                                if white_noise:
+                                    wnoise_1 = np.random.standard_normal(nn) * np.std(noise_1)
+                                else:
+                                    wnoise_1 = noise_1
+                                if epsilon is not None:
+                                    # effectively change noise rms of odd-index detectors
+                                    # according to wanted fractional difference
+                                    wnoise_1 *= np.sqrt((1-epsilon/2)/(1+epsilon/2))
+                                
+                                invtt = self._noise2invtt(0.5*(wnoise_0-wnoise_1), nn, int(idet/2))
                                 invtt_list.append(invtt)
                                 dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + nn)
-                                self._mappraiser_noise[dslice] = 0.5*(noise_0-noise_1)
+                                self._mappraiser_noise[dslice] = 0.5*(wnoise_0-wnoise_1)
                                 offset += nn
                                 del noise_0
                                 del noise_1
+                                del wnoise_0
+                                del wnoise_1
                         # Purge only after all detectors are staged in case some are aliased
                         # cache.clear() will not fail if the object was already
                         # deleted as an alias
