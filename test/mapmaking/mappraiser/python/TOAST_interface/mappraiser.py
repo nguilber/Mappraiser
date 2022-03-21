@@ -66,6 +66,9 @@ def inversepsd_model(f,sigma,alpha,f0,fmin):
 def inverselogpsd_model(f,a,alpha,f0,fmin):
     return a - np.log10(1+((f+fmin)/f0)**alpha)
 
+def white_noise_psd(f,sigma2):
+    return sigma2
+
 class OpMappraiser(Operator):
     """
     Operator which passes data to libmappraiser for map-making.
@@ -403,7 +406,10 @@ class OpMappraiser(Operator):
         # if idet==37:
         #     print(len(f), flush=True)
 
-
+        # distinguish case of white noise
+        # if self._params["white_noise"]:
+        # TODO: case of white noise
+        
         # Fit the psd model to the periodogram (in log scale)
         popt,pcov = curve_fit(logpsd_model,f[1:],np.log10(psd[1:]),p0=np.array([-7, -1.0, 0.1, 0.]), bounds=([-20, -10, 0., 0.], [0., 0., 10, 0.001]), maxfev = 1000)        # popt[1] = -5.
         # popt[2] = 2.
@@ -703,6 +709,7 @@ class OpMappraiser(Operator):
                 invtt_list = []
                 epsilon = self._params["epsilon_frac"]
                 white_noise = self._params["white_noise"]
+                wnoise_sigma = 10**(-3.5)
                 # fknee_list = []
                 # fmin_list = []
                 # alpha_list = []
@@ -719,22 +726,29 @@ class OpMappraiser(Operator):
                             nn = len(noise)
 
                             if white_noise:
-                                wnoise = np.random.standard_normal(nn) * np.std(noise)
+                                # typical white noise level
+                                # (sigma2 = 1e-7)
+                                wnoise = np.random.normal(scale=wnoise_sigma, size=nn)
                             else:
                                 wnoise = noise
-                            
+
                             if (idet % 2) == 1 and epsilon is not None:
-                                # effectively change noise rms of odd-index detectors
-                                # according to wanted fractional difference
+                                # change noise rms of odd-index detectors
+                                # according to wanted frac difference = epsilon
                                 wnoise *= np.sqrt((1-epsilon/2)/(1+epsilon/2))
 
-                            invtt = self._noise2invtt(wnoise, nn, idet)
+                            if white_noise:
+                                # TODO: how to get psdfreqs ?
+                                # TODO: is the use of _psd2invtt appropriate ?
+                                psdfreqs = []
+                                invtt = self._psd2invtt(psdfreqs, np.ones_like(psdfreqs)/wnoise_sigma**2)
+                            else:
+                                invtt = self._noise2invtt(wnoise, nn, idet)
+
                             invtt_list.append(invtt)
                             dslice = slice(idet * nsamp + offset, idet * nsamp + offset + nn)
                             self._mappraiser_noise[dslice] = wnoise
                             offset += nn
-
-
                             del noise
                             del wnoise
                         # Purge only after all detectors are staged in case some are aliased
@@ -752,7 +766,7 @@ class OpMappraiser(Operator):
                                 noise_0 = tod.local_signal(det, self._noise_name)
                                 nn = len(noise_0)
                                 if white_noise:
-                                    wnoise_0 = np.random.standard_normal(nn) * np.std(noise_0)
+                                    wnoise_0 = np.random.normal(scale=wnoise_sigma, size=nn)
                                 else:
                                     wnoise_0 = noise_0
                                 noise_dtype = noise_0.dtype
@@ -761,16 +775,22 @@ class OpMappraiser(Operator):
                                 noise_dtype = noise_1.dtype
                                 offset = global_offset
                                 nn = len(noise_0)
+                                
                                 if white_noise:
-                                    wnoise_1 = np.random.standard_normal(nn) * np.std(noise_1)
+                                    wnoise_1 = np.random.normal(scale=wnoise_sigma, size=nn)
                                 else:
                                     wnoise_1 = noise_1
+                                
                                 if epsilon is not None:
-                                    # effectively change noise rms of odd-index detectors
-                                    # according to wanted fractional difference
                                     wnoise_1 *= np.sqrt((1-epsilon/2)/(1+epsilon/2))
                                 
-                                invtt = self._noise2invtt(0.5*(wnoise_0-wnoise_1), nn, int(idet/2))
+                                if white_noise:
+                                    # TODO: use _inv2tt since wnoise_0 and _1 may not have same rms ?
+                                    psdfreqs = []
+                                    invtt = self._psd2invtt(psdfreqs, np.ones_like(psdfreqs)/wnoise_sigma**2)
+                                else:
+                                    invtt = self._noise2invtt(0.5*(wnoise_0-wnoise_1), nn, int(idet/2))
+
                                 invtt_list.append(invtt)
                                 dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + nn)
                                 self._mappraiser_noise[dslice] = 0.5*(wnoise_0-wnoise_1)
