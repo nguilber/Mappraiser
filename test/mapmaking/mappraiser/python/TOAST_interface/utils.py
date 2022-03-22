@@ -103,7 +103,7 @@ def add_mappraiser_args(parser):
         pass
 
     parser.add_argument(
-        "--epsilon_frac", required=False, default=0.0, type=np.double,
+        "--epsilon_frac", required=False, default=None, type=np.double,
         help="Fractional noise difference"
     )
 
