@@ -407,30 +407,37 @@ class OpMappraiser(Operator):
         #     print(len(f), flush=True)
 
         # distinguish case of white noise
-        # if self._params["white_noise"]:
-        # TODO: case of white noise
-        
-        # Fit the psd model to the periodogram (in log scale)
-        popt,pcov = curve_fit(logpsd_model,f[1:],np.log10(psd[1:]),p0=np.array([-7, -1.0, 0.1, 0.]), bounds=([-20, -10, 0., 0.], [0., 0., 10, 0.001]), maxfev = 1000)        # popt[1] = -5.
-        # popt[2] = 2.
-        if self._rank == 0 and idet == 0:
-            print("\n[det "+str(idet)+"]: PSD fit log(sigma2) = %1.2f, alpha = %1.2f, fknee = %1.2f, fmin = %1.2f\n" % tuple(popt), flush=True)
-            print("[det "+str(idet)+"]: PSD fit covariance: \n", pcov, flush=True)
-        # psd_fit_m1 = np.zeros_like(f)
-        # psd_fit_m1[1:] = inversepsd_model(f[1:],10**popt[0],popt[1],popt[2])
+        if self._params["white_noise"]:
+            popt,pcov = curve_fit(white_noise_psd,f[1:],psd[1:],p0=1e-7, bounds=(1e-20, 1e0), maxfev = 1000)
+            if self._rank == 0 and idet == 0:
+                print("\n[det "+str(idet)+"]: PSD fit sigma2 = %1.2f\n" % tuple(popt), flush=True)
+                print("[det "+str(idet)+"]: PSD fit covariance: \n", pcov, flush=True)
+            
+            psd_fit_m1 = np.zeros_like(f)
+            psd_fit_m1[1:] = white_noise_psd(f[1:],1/popt[0])
 
-        # Invert periodogram
-        psd_sim_m1 = np.reciprocal(psd)
-        # if self._rank == 0 and idet == 0:
-        #     np.save("psd_sim.npy",psd_sim_m1)
-        # psd_sim_m1_log = np.log10(psd_sim_m1)
+        else:
+            # Fit the psd model to the periodogram (in log scale)
+            popt,pcov = curve_fit(logpsd_model,f[1:],np.log10(psd[1:]),p0=np.array([-7, -1.0, 0.1, 0.]), bounds=([-20, -10, 0., 0.], [0., 0., 10, 0.001]), maxfev = 1000)        # popt[1] = -5.
+            # popt[2] = 2.
+            if self._rank == 0 and idet == 0:
+                print("\n[det "+str(idet)+"]: PSD fit log(sigma2) = %1.2f, alpha = %1.2f, fknee = %1.2f, fmin = %1.2f\n" % tuple(popt), flush=True)
+                print("[det "+str(idet)+"]: PSD fit covariance: \n", pcov, flush=True)
+            # psd_fit_m1 = np.zeros_like(f)
+            # psd_fit_m1[1:] = inversepsd_model(f[1:],10**popt[0],popt[1],popt[2])
 
-        # Invert the fit to the psd model / Fit the inverse psd model to the inverted periodogram
-        # popt,pcov = curve_fit(inverselogpsd_model,f[1:],psd_sim_m1_log[1:])
-        # print(popt)
-        # print(pcov)
-        psd_fit_m1 = np.zeros_like(f)
-        psd_fit_m1[1:] = inversepsd_model(f[1:],10**(-popt[0]),popt[1],popt[2], popt[3])
+            # Invert periodogram
+            psd_sim_m1 = np.reciprocal(psd)
+            # if self._rank == 0 and idet == 0:
+            #     np.save("psd_sim.npy",psd_sim_m1)
+            # psd_sim_m1_log = np.log10(psd_sim_m1)
+
+            # Invert the fit to the psd model / Fit the inverse psd model to the inverted periodogram
+            # popt,pcov = curve_fit(inverselogpsd_model,f[1:],psd_sim_m1_log[1:])
+            # print(popt)
+            # print(pcov)
+            psd_fit_m1 = np.zeros_like(f)
+            psd_fit_m1[1:] = inversepsd_model(f[1:],10**(-popt[0]),popt[1],popt[2], popt[3])
 
         # Initialize full size inverse PSD in frequency domain
         fs = fftfreq(block_size, 1./sampling_freq)
@@ -737,14 +744,7 @@ class OpMappraiser(Operator):
                                 # according to wanted frac difference = epsilon
                                 wnoise *= np.sqrt((1-epsilon/2)/(1+epsilon/2))
 
-                            if white_noise:
-                                # TODO: how to get psdfreqs ?
-                                # TODO: is the use of _psd2invtt appropriate ?
-                                psdfreqs = []
-                                invtt = self._psd2invtt(psdfreqs, np.ones_like(psdfreqs)/wnoise_sigma**2)
-                            else:
-                                invtt = self._noise2invtt(wnoise, nn, idet)
-
+                            invtt = self._noise2invtt(wnoise, nn, idet)
                             invtt_list.append(invtt)
                             dslice = slice(idet * nsamp + offset, idet * nsamp + offset + nn)
                             self._mappraiser_noise[dslice] = wnoise
@@ -784,12 +784,7 @@ class OpMappraiser(Operator):
                                 if epsilon is not None:
                                     wnoise_1 *= np.sqrt((1-epsilon/2)/(1+epsilon/2))
                                 
-                                if white_noise:
-                                    # TODO: use _inv2tt since wnoise_0 and _1 may not have same rms ?
-                                    psdfreqs = []
-                                    invtt = self._psd2invtt(psdfreqs, np.ones_like(psdfreqs)/wnoise_sigma**2)
-                                else:
-                                    invtt = self._noise2invtt(0.5*(wnoise_0-wnoise_1), nn, int(idet/2))
+                                invtt = self._noise2invtt(0.5*(wnoise_0-wnoise_1), nn, int(idet/2))
 
                                 invtt_list.append(invtt)
                                 dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + nn)
