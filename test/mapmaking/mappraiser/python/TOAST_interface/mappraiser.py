@@ -66,7 +66,7 @@ def inversepsd_model(f,sigma,alpha,f0,fmin):
 def inverselogpsd_model(f,a,alpha,f0,fmin):
     return a - np.log10(1+((f+fmin)/f0)**alpha)
 
-def white_noise_psd(f,sigma2):
+def white_psd(f,sigma2):
     return sigma2
 
 class OpMappraiser(Operator):
@@ -406,15 +406,14 @@ class OpMappraiser(Operator):
         # if idet==37:
         #     print(len(f), flush=True)
 
-        # distinguish case of white noise
+        # distinguish case of white noise (no need to fit PSD in this case)
         if self._params["white_noise"]:
-            popt,pcov = curve_fit(white_noise_psd,f[1:],psd[1:],p0=1e-7, bounds=(1e-20, 1e0), maxfev = 1000)
-            if self._rank == 0 and idet == 0:
-                print("\n[det "+str(idet)+"]: PSD fit sigma2 = %1.2f\n" % tuple(popt), flush=True)
-                print("[det "+str(idet)+"]: PSD fit covariance: \n", pcov, flush=True)
-            
+            sigma2 = 1e7
+            epsilon = self._params["epsilon_frac"]
+            if epsilon is not None:
+                sigma2 *= (1 + np.sqrt((1-epsilon/2)/(1+epsilon/2))) / 4
             psd_fit_m1 = np.zeros_like(f)
-            psd_fit_m1[1:] = white_noise_psd(f[1:],1/popt[0])
+            psd_fit_m1[1:] = white_psd(f[1:],1/sigma2)
 
         else:
             # Fit the psd model to the periodogram (in log scale)
@@ -427,7 +426,7 @@ class OpMappraiser(Operator):
             # psd_fit_m1[1:] = inversepsd_model(f[1:],10**popt[0],popt[1],popt[2])
 
             # Invert periodogram
-            psd_sim_m1 = np.reciprocal(psd)
+            # psd_sim_m1 = np.reciprocal(psd)
             # if self._rank == 0 and idet == 0:
             #     np.save("psd_sim.npy",psd_sim_m1)
             # psd_sim_m1_log = np.log10(psd_sim_m1)
