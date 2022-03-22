@@ -411,7 +411,7 @@ class OpMappraiser(Operator):
             sigma2 = 1e-7
             epsilon = self._params["epsilon_frac"]
             if epsilon is not None:
-                sigma2 *= (1 + np.sqrt((1-epsilon/2)/(1+epsilon/2))) / 4
+                sigma2 *= (1 + (1-epsilon/2)/(1+epsilon/2)) / 4
             psd_fit_m1 = np.zeros_like(f)
             psd_fit_m1[1:] = white_psd(f[1:],1/sigma2)
 
@@ -716,6 +716,7 @@ class OpMappraiser(Operator):
                 epsilon = self._params["epsilon_frac"]
                 white_noise = self._params["white_noise"]
                 wnoise_sigma = 10**(-3.5)
+                seed = self._params["wnoise_seed"]
                 # fknee_list = []
                 # fmin_list = []
                 # alpha_list = []
@@ -734,7 +735,11 @@ class OpMappraiser(Operator):
                             if white_noise:
                                 # typical white noise level
                                 # (sigma2 = 1e-7)
-                                wnoise = np.random.normal(scale=wnoise_sigma, size=nn)
+                                if seed is not None:
+                                    rng = np.random.default_rng(seed * 2**iobs * 3**idet)
+                                else:
+                                    rng = np.random.default_rng()
+                                wnoise = rng.normal(scale=wnoise_sigma, size=nn)
                             else:
                                 wnoise = noise
 
@@ -765,7 +770,11 @@ class OpMappraiser(Operator):
                                 noise_0 = tod.local_signal(det, self._noise_name)
                                 nn = len(noise_0)
                                 if white_noise:
-                                    wnoise_0 = np.random.normal(scale=wnoise_sigma, size=nn)
+                                    if seed is not None:
+                                        rng = np.random.default_rng(seed * 2**iobs * 3**idet)
+                                    else:
+                                        rng = np.random.default_rng()
+                                    wnoise_0 = rng.normal(scale=wnoise_sigma, size=nn)
                                 else:
                                     wnoise_0 = noise_0
                                 noise_dtype = noise_0.dtype
@@ -776,7 +785,11 @@ class OpMappraiser(Operator):
                                 nn = len(noise_0)
                                 
                                 if white_noise:
-                                    wnoise_1 = np.random.normal(scale=wnoise_sigma, size=nn)
+                                    if seed is not None:
+                                        rng = np.random.default_rng(seed * 2**iobs * 3**idet)
+                                    else:
+                                        rng = np.random.default_rng()
+                                    wnoise_1 = rng.normal(scale=wnoise_sigma, size=nn)
                                 else:
                                     wnoise_1 = noise_1
                                 

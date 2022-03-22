@@ -112,6 +112,11 @@ def add_mappraiser_args(parser):
         help="Generate simple white noise"
     )
 
+    parser.add_argument(
+        "--wnoise_seed", required=False, default=None, type=np.int,
+        help="Specify seed for white noise generation (for reproducible results)"
+    )
+
     return
 
 @function_timer
@@ -138,6 +143,7 @@ def setup_mappraiser(args):
 
     params["epsilon_frac"] = args.epsilon_frac
     params["white_noise"] = args.white_noise
+    params["wnoise_seed"] = args.wnoise_seed
 
     return params
 
