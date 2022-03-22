@@ -408,7 +408,7 @@ class OpMappraiser(Operator):
 
         # distinguish case of white noise (no need to fit PSD in this case)
         if self._params["white_noise"]:
-            sigma2 = 1e7
+            sigma2 = 1e-7
             epsilon = self._params["epsilon_frac"]
             if epsilon is not None:
                 sigma2 *= (1 + np.sqrt((1-epsilon/2)/(1+epsilon/2))) / 4
