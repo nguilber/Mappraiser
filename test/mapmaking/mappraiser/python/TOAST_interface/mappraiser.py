@@ -408,20 +408,16 @@ class OpMappraiser(Operator):
 
         # distinguish case of white noise (no need to fit PSD in this case)
         if self._params["white_noise"]:
-            sigma2 = 1e-7
+            scaling = 1.0
             epsilon = self._params["epsilon_frac"]
-            if not self._pair_diff:
-                # ML case
-                if (idet%2) == 1 and epsilon is not None:
-                    sigma2 *= (1-epsilon/2)/(1+epsilon/2)
-            else:
-                # PD case
-                if epsilon is None:
-                    sigma2 /= 2
-                else:
-                    sigma2 *= (1 + (1-epsilon/2)/(1+epsilon/2)) / 4
+            # map-making is not sensible to scaling
+            # which is constant across ALL detectors
+            # -> the only case where we change smth is ML with
+            # modified noise rms in odd detectors (epsilon != 0)
+            if not self._pair_diff and (idet%2) == 1 and epsilon is not None:
+                    scaling *= (1-epsilon/2)/(1+epsilon/2)
             psd_fit_m1 = np.zeros_like(f)
-            psd_fit_m1[1:] = white_psd(f[1:],1/sigma2)
+            psd_fit_m1[1:] = white_psd(f[1:],1/scaling)
 
         else:
             # Fit the psd model to the periodogram (in log scale)
