@@ -410,8 +410,16 @@ class OpMappraiser(Operator):
         if self._params["white_noise"]:
             sigma2 = 1e-7
             epsilon = self._params["epsilon_frac"]
-            if epsilon is not None:
-                sigma2 *= (1 + (1-epsilon/2)/(1+epsilon/2)) / 4
+            if not self._pair_diff:
+                # ML case
+                if (idet%2) == 1 and epsilon is not None:
+                    sigma2 *= (1-epsilon/2)/(1+epsilon/2)
+            else:
+                # PD case
+                if epsilon is None:
+                    sigma2 /= 2
+                else:
+                    sigma2 *= (1 + (1-epsilon/2)/(1+epsilon/2)) / 4
             psd_fit_m1 = np.zeros_like(f)
             psd_fit_m1[1:] = white_psd(f[1:],1/sigma2)
 
