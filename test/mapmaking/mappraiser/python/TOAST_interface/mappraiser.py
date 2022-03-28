@@ -267,17 +267,24 @@ class OpMappraiser(Operator):
         # os.environ["OMP_NUM_THREADS"] = "1"
         nside = int(self._params["nside"])
         lindices = sorted(list(set((self._mappraiser_pixels)//3)))
-        # Neighboursarray = np.asarray(hp.get_all_neighbours(nside,lindices))
-        Neighboursarray, Weightsarray = hp.get_interp_weights(nside,lindices)
-        Neighboursarray = Neighboursarray.flatten(order='F')
-        Weightsarray = Weightsarray.flatten(order='F')
+        theta,phi = hp.pix2ang(nside, lindices, nest = self._pixels_nested)
+        Neighboursarray, Weightsarray = hp.get_interp_weights(nside, theta, phi, nest=self._pixels_nested)
+        Neighboursarray2 = np.asarray(hp.get_all_neighbours(nside, lindices, nest=self._pixels_nested))
+        # print(np.shape(Neighboursarray))
+        # print(np.shape(Weightsarray))
+        Neighboursarray  = Neighboursarray.flatten(order='F')
+        Neighboursarray2 = Neighboursarray2.flatten(order='F')
+        Weightsarray    = Weightsarray.flatten(order='F')
         # if self._rank == 0:
+        #     np.savetxt("InterpolationWeights.dat", Weightsarray)
             # print(" ++++++++++++++ COUCOU +++++++++++++++")
             # print(len(Neighboursarray)//4)
             # print(Neighboursarray[0:200])
             # print(Weightsarray[500:700])
-        Neighbours = self._cache.create("neighbours", mappraiser.PIXEL_TYPE, (len(Neighboursarray),))
-        Neighbours[:] = Neighboursarray[:]
+        Neighbours       = self._cache.create("neighbours", mappraiser.PIXEL_TYPE, (len(Neighboursarray),))
+        InterpWeights    = self._cache.create("weights"   , np.float64           , (len(Neighboursarray),))
+        Neighbours[:]    = Neighboursarray[:]
+        InterpWeights[:] = Weightsarray[:]
 
         # print(Neighbours.shape)
         # print(type(Neighbours))
@@ -295,7 +302,8 @@ class OpMappraiser(Operator):
             self._mappraiser_noise,
             self._params["Lambda"],
             self._mappraiser_invtt,
-            Neighbours)
+            Neighbours,
+            InterpWeights)
         # os.environ["OMP_NUM_THREADS"] = "4"
 
         return

@@ -21,7 +21,7 @@
 #include "midapack.h"
 #include "mappraiser.h"
 
-int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl, double *x_init, int n_init, int* old_lindices, int old_trashpix, int nbsamples, int *sampleIdx, int *Neighbours)
+int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl, double *x_init, int n_init, int* old_lindices, int old_trashpix, int nbsamples, int *sampleIdx, int *Neighbours, double *InterpWeights, double normb)
 {
     int rank, size;
     MPI_Comm_rank(A->comm, &rank);
@@ -73,7 +73,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
         }
       }
     }
-    Update_Initial_Guess(x_init, n_init, x, Neighbours, old_lindices, old_npix, old_trashpix, A, old2new);
+    Update_Initial_Guess(x_init, n_init, x, Neighbours, old_lindices, old_npix, old_trashpix, A, old2new, InterpWeights);
     // int mapsizeA = A->lcount-(A->nnz)*(A->trash_pix);
     // for(i=0; i< n_init; i++){
     //   int globidx1 = old_lindices[i+(A->nnz)*old_trashpix];
@@ -148,9 +148,17 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
         res = g2pix;
     }
 
+
+
     double g2pixB = g2pix;
-    double tol2rel = tol * tol * res; //tol*tol*g2pixB; //*g2pixB; //tol; //*tol*g2;
-    res0 = res;
+    if (normb > 0) {
+      res0 = normb;
+    }
+    else{
+      res0 = res;
+    }
+    double tol2rel = tol * tol * res0; //tol*tol*g2pixB; //*g2pixB; //tol; //*tol*g2;
+
     // Test if already converged
     if (rank == 0) {
         res_rel = sqrt(res) / sqrt(res0);
@@ -282,7 +290,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     return 0;
 }
 
-int PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl, int nbsamples, int *sampleIdx)
+double PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl, int nbsamples, int *sampleIdx)
 {
     int    rank, size;
     MPI_Comm_rank(A->comm, &rank);
@@ -549,5 +557,5 @@ int PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
       printf(" ----------------------- > End of PCG on randomized GLS + Free temporary vectors DONE \n");
     fflush(stdout);
 
-    return 0;
+    return res0;
 }

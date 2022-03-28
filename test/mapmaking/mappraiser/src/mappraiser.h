@@ -58,10 +58,10 @@ void free_precond(struct Precond **in_out_p);
 int get_pixshare_pond(Mat *A, double *pixpond);
 
 //PCG routine
-int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl, double *x_init, int n_init, int* old_lindices, int old_trashpix, int nbsamples, int *sampleIdx, int *Neighbours);
+int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl, double *x_init, int n_init, int* old_lindices, int old_trashpix, int nbsamples, int *sampleIdx, int *Neighbours, double *InterpWeights, double normb);
 
 //PCG on randomized GLS pb
-int PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl, int nbsamples, int* sampleIdx);
+double PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl, int nbsamples, int* sampleIdx);
 
 //ECG routine
 int ECG_GLS(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int maxIter, int enlFac, int ortho_alg, int bs_red);
@@ -70,4 +70,4 @@ int ECG_GLS(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, d
 int prepare_Rand_GLS(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *b, double *noise, double *cond, int* sampleIdx);
 
 // Update initial guess with a solution of previous randomized GLS problem
-void Update_Initial_Guess(double *x_init, int n_init, double *x, int* Neighbours, int* old_lindices, int old_npix, int old_trashpix, Mat *A, int *old2new);
+void Update_Initial_Guess(double *x_init, int n_init, double *x, int* Neighbours, int* old_lindices, int old_npix, int old_trashpix, Mat *A, int *old2new, double *InterpWeights);

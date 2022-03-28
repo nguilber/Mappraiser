@@ -23,7 +23,7 @@
 
 int x2map_pol( double *mapI, double *mapQ, double *mapU, double *Cond, int * hits, int npix, double *x, int *lstid, double *cond, int *lhits, int xsize);
 
-void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int Z_2lvl, int pointing_commflag, double tol, int maxiter, int enlFac, int ortho_alg, int bs_red, int nside, void *data_size_proc, int nb_blocks_loc, void *local_blocks_sizes, int Nnz, void *pix, void *pixweights, void *signal, double *noise, int lambda, double *invtt, void *Neighbours)
+void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int Z_2lvl, int pointing_commflag, double tol, int maxiter, int enlFac, int ortho_alg, int bs_red, int nside, void *data_size_proc, int nb_blocks_loc, void *local_blocks_sizes, int Nnz, void *pix, void *pixweights, void *signal, double *noise, int lambda, double *invtt, void *Neighbours, void *InterpWeights)
 {
   int64_t	M;       //Global number of rows
   int		m, Nb_t_Intervals;  //local number of rows of the pointing matrix A, nbr of stationary intervals
@@ -39,7 +39,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   MPI_Status status;
   FILE *fp;
   int npix = 12*pow(nside,2);
-
+  double normb = 0;
   //mkl_set_num_threads(1); // Circumvent an MKL bug
 
   MPI_Comm_rank(comm, &rank);
@@ -222,7 +222,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
 
   if(solver == 0){
 
-    PCG_GLS_rand(outpath, ref, &B, Nm1, x_B, copy_signal, noise, cond_B, lhits_B, tol, maxiter, precond, Z_2lvl, nbsamples, sampleIdx);
+    normb = PCG_GLS_rand(outpath, ref, &B, Nm1, x_B, copy_signal, noise, cond_B, lhits_B, tol, maxiter, precond, Z_2lvl, nbsamples, sampleIdx);
     int mapsizeB = B.lcount-(B.nnz)*(B.trash_pix);
 
     // char filename[256];
@@ -253,10 +253,10 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
     // fclose(fp);
     // free(mapI_true);
 
-    PCG_GLS_true(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, precond, Z_2lvl, x_B, mapsizeB, B.lindices, B.trash_pix, nbsamples, sampleIdx, Neighbours);
-    // if (A.lcount != B.lcount) {
-      // printf("************ %i Trash pixels different for A and B on rank %i\n",(A.lcount - B.lcount)/3, rank);
-    // }
+    PCG_GLS_true(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, precond, Z_2lvl, x_B, mapsizeB, B.lindices, B.trash_pix, nbsamples, sampleIdx, Neighbours, InterpWeights, normb);
+    if (A.lcount != B.lcount) {
+      printf("************ %i Trash pixels different for A and B on rank %i\n",(A.lcount - B.lcount)/3, rank);
+    }
     // printf("************ %i Trash pixels on rank %i\n", A.lcount/3, rank);
 
   }

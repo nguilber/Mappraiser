@@ -70,9 +70,10 @@ _mappraiser.MLmap.argtypes =[
     ct.c_int, #lambda
     npc.ndpointer(dtype=INVTT_TYPE, ndim=1, flags="C_CONTIGUOUS"),
     npc.ndpointer(dtype=np.int32, ndim=1, flags="C_CONTIGUOUS"),
+    npc.ndpointer(dtype=WEIGHT_TYPE, ndim=1, flags="C_CONTIGUOUS"),
 ]
 
-def MLmap(comm, params, data_size_proc, nb_blocks_loc, local_blocks_sizes, Nnz, pixels, pixweights, signal, noise, Lambda, invtt, Neighbours):
+def MLmap(comm, params, data_size_proc, nb_blocks_loc, local_blocks_sizes, Nnz, pixels, pixweights, signal, noise, Lambda, invtt, Neighbours, InterpWeights):
     """
     Compute the MLMV solution of the GLS estimator, assuming uniform detector weighting and a single PSD
     For all stationary intervals. (These assumptions will be removed in future updates)
@@ -81,5 +82,5 @@ def MLmap(comm, params, data_size_proc, nb_blocks_loc, local_blocks_sizes, Nnz, 
         raise RuntimeError("No libmappraiser available, cannot reconstruct the map")
     outpath = params["output"].encode('ascii')
     ref = params["ref"].encode('ascii')
-    _mappraiser.MLmap(encode_comm(comm), outpath, ref, params["solver"], params["precond"], params["Z_2lvl"], params["pointing_commflag"], params["tol"], params["maxiter"], params["enlFac"], params["ortho_alg"], params["bs_red"], params["nside"], data_size_proc, nb_blocks_loc, local_blocks_sizes, Nnz, pixels, pixweights, signal, noise, Lambda, invtt, Neighbours)
+    _mappraiser.MLmap(encode_comm(comm), outpath, ref, params["solver"], params["precond"], params["Z_2lvl"], params["pointing_commflag"], params["tol"], params["maxiter"], params["enlFac"], params["ortho_alg"], params["bs_red"], params["nside"], data_size_proc, nb_blocks_loc, local_blocks_sizes, Nnz, pixels, pixweights, signal, noise, Lambda, invtt, Neighbours, InterpWeights)
     return
