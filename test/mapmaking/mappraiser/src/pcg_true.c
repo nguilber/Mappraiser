@@ -59,21 +59,21 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     int old_npix = A->lcount/A->nnz;
     int *oldlindices = (int *) malloc(old_npix * sizeof(int)); // old num to new num
 
-    build_precond(&p, &pixpond, &n, A, &Nm1, &x, b, noise, cond, lhits, tol, Z_2lvl, precond, nbsamples, sampleIdx, oldlindices);
+    build_precond(&p, &pixpond, &n, A, &Nm1, &x, b, noise, cond, lhits, tol, Z_2lvl, precond, nbsamples, sampleIdx, x_init, n_init, old_lindices, old_trashpix);
     int mapsizeA = (A->lcount-(A->nnz)*(A->trash_pix))/(A->nnz);
-    int *old2new     = (int *) malloc(mapsizeA * sizeof(int)); // old num to new num
-    for (int i = 0; i < old_npix; i++) {
-      for (int j = 0; j < mapsizeA; j++) {
-        if (oldlindices[i] == (A->lindices[(A->nnz)*(j+(A->trash_pix))]/(A->nnz)))
-        {
-          old2new[j] = i;
-          // if (rank == 0) {
-          //   printf("index old2new %i\n", i);
-          // }
-        }
-      }
-    }
-    Update_Initial_Guess(x_init, n_init, x, Neighbours, old_lindices, old_npix, old_trashpix, A, old2new, InterpWeights);
+    // int *old2new     = (int *) malloc(mapsizeA * sizeof(int)); // old num to new num
+    // for (int i = 0; i < old_npix; i++) {
+    //   for (int j = 0; j < mapsizeA; j++) {
+    //     if (oldlindices[i] == (A->lindices[(A->nnz)*(j+(A->trash_pix))]/(A->nnz)))
+    //     {
+    //       old2new[j] = i;
+    //       // if (rank == 0) {
+    //       //   printf("index old2new %i\n", i);
+    //       // }
+    //     }
+    //   }
+    // }
+    // Update_Initial_Guess(x_init, n_init, x, Neighbours, old_lindices, old_npix, old_trashpix, A, old2new, InterpWeights);
     // int mapsizeA = A->lcount-(A->nnz)*(A->trash_pix);
     // for(i=0; i< n_init; i++){
     //   int globidx1 = old_lindices[i+(A->nnz)*old_trashpix];
@@ -283,7 +283,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     free(gp);
     free(AtNm1Ah);
     free(Ah);
-    free(old2new);
+    // free(old2new);
     free(oldlindices);
     free_precond(&p);
 

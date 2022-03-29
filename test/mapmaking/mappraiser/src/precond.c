@@ -1465,6 +1465,7 @@ void Lanczos_eig(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ, dou
 
   for (i = 0; i < m; i++)
     _g[i] = b[i] + noise[i] - _g[i];
+    // _g[i] = b[i] + noise[i] ;
 
   stbmmProd(*Nm1, _g);
 
@@ -1941,7 +1942,7 @@ void Lanczos_eigWGaps(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ
 
 
 // General routine for constructing a preconditioner
-void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat *A, Tpltz *Nm1, double **in_out_x, double *b, const double *noise, double *cond, int *lhits, double tol, int Zn, int precond, int nbsamples, int *sampleIdx, int* old2new)
+void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat *A, Tpltz *Nm1, double **in_out_x, double *b, const double *noise, double *cond, int *lhits, double tol, int Zn, int precond, int nbsamples, int *sampleIdx, double *x_init, int n_init, int *old2new, int old_trashpix)
 {
   int rank, size, i;
   MPI_Comm_rank(A->comm, &rank);
@@ -1962,12 +1963,26 @@ void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat
 
   p->n = (A->lcount) - (A->nnz) * (A->trash_pix);
 
+
   // Reallocate memory for well-conditioned map
   x = realloc(*in_out_x, p->n * sizeof(double));
   if (x == NULL) {
     printf("Out of memory: map reallocation failed");
     exit(1);
   }
+  if (rank == 0) printf("COUCOU   ************* 111111" );
+
+  int mapsizeA = A->lcount-(A->nnz)*(A->trash_pix);
+  for(i=0; i< n_init; i++){
+    int globidx1 = old2new[i+(A->nnz)*old_trashpix];
+    for (int j = 0; j < mapsizeA; j++) {
+      int globidx2 = A->lindices[j+(A->nnz)*(A->trash_pix)];
+      if (globidx1 == globidx2) {
+        x[j] = x_init[i];
+      }
+    }
+  }
+  if (rank == 0) printf("COUCOU   ************* 22222222" );
 
   p->pixpond = (double *)malloc(p->n * sizeof(double));
 
