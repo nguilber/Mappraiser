@@ -554,8 +554,8 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
         x[k+A->nnz*j] = block[j*A->nnz+k];
       }
     }
-    // printf("Test-p3\n");
-    // fflush(stdout);
+    free(hits_proc);
+
     //Compute the reciprocal of the condition number of the block
 
     /* Computes the norm of x */
@@ -579,8 +579,13 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
                block[0*3+1] * (block[1*3 +0] * block[2*3+2] - block[1*3+2] * block[2*3+0]) +
                block[0*3+2] * (block[1*3+0] * block[2*3+1] - block[1*3+1] * block[2*3+0]);
     }
-    else if(A->nnz == 2){
-      det = block[0]*block[1*2+1]-block[0*2+1]*block[1*2+0];
+    commScheme(A, vpixBlock_loc, 2);
+    for (i = 0; i < n * (A->nnz); i += (A->nnz) * (A->nnz))
+    {
+        for (j = 0; j < (A->nnz); j++)
+        {
+            vpixBlock[i + j] = vpixBlock_loc[(i / (A->nnz)) + j];
+        }
     }
 
     if(rcond > 1e-1){
@@ -698,68 +703,46 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
   return 0;
 }
 
-int precondjacobilike_avg(Mat A, Tpltz Nm1, double *c)
-{
-
-  int           i, j, k ;                       // some indexes
-  int           m, n, rank, size;
-  double        localreduce;                    //reduce buffer
-  double        st, t;                          //timers
-
-  m=A.m;                                        //number of local time samples
-  n=A.lcount;                                   //number of local pixels
-  MPI_Comm_rank(A.comm, &rank);                 //
-  MPI_Comm_size(A.comm, &size);                 //
-
-  double diagNm1;
-
-  //Compute diag( AtA )
-  DiagAtA(&A, c, 2);
-
-  //multiply by the diagonal Toeplitz
-  diagNm1 = Nm1.tpltzblocks[0].T_block[0];
-
-  printf("diagNm1 = %f \n", diagNm1 );
-  for(j=0; j<n; j++)
-    c[j] = diagNm1 * c[j];
-
-  // compute c inverse vector
-  for(j=0; j<n; j++)
-    c[j] = 1./c[j] ;
-
-
-  return 0;
-}
-
 int precondjacobilike(Mat A, Tpltz Nm1, int *lhits, double *cond, double *vpixDiag)
 {
 
-  int           i, j, k ;                       // some indexes
-  int           m, n, rank, size;
-  double        localreduce;                    //reduce buffer
-  double        st, t;                          //timers
+    int i, j, k; // some indexes
+    int m, n, rank, size;
+    double localreduce; // reduce buffer
+    double st, t;       // timers
 
-  MPI_Comm_rank(A.comm, &rank);                 //
-  MPI_Comm_size(A.comm, &size);                 //
+    MPI_Comm_rank(A.comm, &rank); //
+    MPI_Comm_size(A.comm, &size); //
 
-  m=A.m;                                        //number of local time samples
-  n=A.lcount;                                   //number of local pixels
+    m = A.m;      // number of local time samples
+    n = A.lcount; // number of local pixels
 
-  //Compute local diag( At diag(N^1) A )
-  getlocDiagN(&A, Nm1, vpixDiag);
+    // Compute local diag( At diag(N^1) A )
+    getlocDiagN(&A, Nm1, vpixDiag);
 
-  //communicate with the other processes to have the global reduce
-  commScheme(&A, vpixDiag, 2);
+    /*
+      for(i=0; i<10; i++)
+        printf("rank=%d, vpixDiag[%d]=%lf \n", rank, i, vpixDiag[i]) ;
 
-  // compute the inverse vector
-  for(i=0; i<n; i++){
-    if(i%3 == 0){
-      lhits[(int)i/3] = (int)vpixDiag[i];
-      cond[(int)i/3] = vpixDiag[i+1] + vpixDiag[i+2];
+        printf("rank=%d, vpixDiag[n-1]=%lf \n", rank, vpixDiag[n-1]);
+    */
+
+    // communicate with the other processes to have the global reduce
+    commScheme(&A, vpixDiag, 2);
+    // for(i=0;i<50;i++){
+    //   printf("global AtA block: vpixDiag[%d]=%f\n",i,vpixDiag[i]);
+    // }
+    // compute the inverse vector
+    for (i = 0; i < n; i++)
+    {
+        if (i % 3 == 0)
+        {
+            lhits[(int)i / 3] = (int)vpixDiag[i];
+            cond[(int)i / 3] = vpixDiag[i + 1] + vpixDiag[i + 2];
+        }
+        vpixDiag[i] = 1. / vpixDiag[i];
     }
-    vpixDiag[i] = 1./vpixDiag[i] ;
-  }
-  return 0;
+    return 0;
 }
 
 //low-level routine: to be moved somwhere else
