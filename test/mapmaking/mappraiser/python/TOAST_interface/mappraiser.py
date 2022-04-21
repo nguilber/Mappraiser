@@ -67,7 +67,7 @@ def inverselogpsd_model(f,a,alpha,f0,fmin):
     return a - np.log10(1+((f+fmin)/f0)**alpha)
 
 def white_psd(f,sigma2):
-    return sigma2
+    return sigma2*np.ones_like(f)
 
 class OpMappraiser(Operator):
     """
@@ -416,8 +416,9 @@ class OpMappraiser(Operator):
             # modified noise rms in odd detectors (epsilon != 0)
             if not self._pair_diff and (idet%2) == 1 and epsilon is not None:
                     scaling *= (1-epsilon/2)/(1+epsilon/2)
-            psd_fit_m1 = np.zeros_like(f)
-            psd_fit_m1[1:] = white_psd(f[1:],1/scaling)
+            # psd_fit_m1 = np.zeros_like(f)
+            # psd_fit_m1[1:] = white_psd(f[1:],1/scaling)
+            psd_fit_m1 = white_psd(f,1/scaling)
 
         else:
             # Fit the psd model to the periodogram (in log scale)
@@ -744,6 +745,7 @@ class OpMappraiser(Operator):
                                 else:
                                     rng = np.random.default_rng()
                                 wnoise = rng.normal(scale=wnoise_sigma, size=nn)
+                                # print("wnoise", wnoise[:10], seed, iobs, idet)
                             else:
                                 wnoise = noise
 
@@ -779,6 +781,7 @@ class OpMappraiser(Operator):
                                     else:
                                         rng = np.random.default_rng()
                                     wnoise_0 = rng.normal(scale=wnoise_sigma, size=nn)
+                                    # print("wnoise_0", wnoise_0[:10], seed, iobs, idet)
                                 else:
                                     wnoise_0 = noise_0
                                 noise_dtype = noise_0.dtype
@@ -794,6 +797,7 @@ class OpMappraiser(Operator):
                                     else:
                                         rng = np.random.default_rng()
                                     wnoise_1 = rng.normal(scale=wnoise_sigma, size=nn)
+                                    # print("wnoise_1", wnoise_1[:10], seed, iobs, idet)
                                 else:
                                     wnoise_1 = noise_1
                                 
