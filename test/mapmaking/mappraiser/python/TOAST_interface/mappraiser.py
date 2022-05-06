@@ -408,17 +408,16 @@ class OpMappraiser(Operator):
 
         # distinguish case of white noise (no need to fit PSD in this case)
         if self._params["white_noise"]:
-            scaling = 1.0
+            factor = 1.0
             epsilon = self._params["epsilon_frac"]
             # map-making is not sensible to scaling
             # which is constant across ALL detectors
             # -> the only case where we change smth is ML with
             # modified noise rms in odd detectors (epsilon != 0)
-            if not self._pair_diff and (idet%2) == 1 and epsilon is not None:
-                    scaling *= (1-epsilon/2)/(1+epsilon/2)
-            # psd_fit_m1 = np.zeros_like(f)
-            # psd_fit_m1[1:] = white_psd(f[1:],1/scaling)
-            psd_fit_m1 = white_psd(f,1/scaling)
+            if (not self._pair_diff) and ((idet%2) == 1) and (epsilon is not None):
+                    factor = (1-epsilon/2)/(1+epsilon/2)
+            # psd_fit_m1 = white_psd(f,1/scaling)
+            return np.array([factor])  # np.array([1/factor])
 
         else:
             # Fit the psd model to the periodogram (in log scale)
@@ -717,6 +716,8 @@ class OpMappraiser(Operator):
                 global_offset = 0
                 invtt_list = []
                 epsilon = self._params["epsilon_frac"]
+                # factor between rms of odd and even noise timestreams
+                noise_factor = 1.0 if epsilon is None else np.sqrt((1-epsilon/2)/(1+epsilon/2))
                 white_noise = self._params["white_noise"]
                 wnoise_sigma = 10**(-3.5)
                 seed = self._params["wnoise_seed"]
@@ -743,16 +744,25 @@ class OpMappraiser(Operator):
                                 else:
                                     rng = np.random.default_rng()
                                 wnoise = rng.normal(scale=wnoise_sigma, size=nn)
-                                # print("wnoise", wnoise[:10], seed, iobs, idet)
                             else:
                                 wnoise = noise
 
-                            if (idet % 2) == 1 and epsilon is not None:
+                            if (idet % 2) == 1:
                                 # change noise rms of odd-index detectors
-                                # according to wanted frac difference = epsilon
-                                wnoise *= np.sqrt((1-epsilon/2)/(1+epsilon/2))
+                                wnoise *= noise_factor
+                            
+                            ### DEBUG BEGIN ###
+                            if self._rank == 0:
+                                    print("det #{} -> std(wnoise) = {}".format(idet, np.std(wnoise)), flush=True)
+                            ### DEBUG END ###
 
                             invtt = self._noise2invtt(wnoise, nn, idet)
+                            
+                            ### DEBUG BEGIN ###
+                            if self._rank == 0:
+                                    print("det #{} -> invtt = {}".format(idet, invtt), flush=True)
+                            ### DEBUG END ###
+                            
                             invtt_list.append(invtt)
                             dslice = slice(idet * nsamp + offset, idet * nsamp + offset + nn)
                             self._mappraiser_noise[dslice] = wnoise
@@ -779,7 +789,6 @@ class OpMappraiser(Operator):
                                     else:
                                         rng = np.random.default_rng()
                                     wnoise_0 = rng.normal(scale=wnoise_sigma, size=nn)
-                                    # print("wnoise_0", wnoise_0[:10], seed, iobs, idet)
                                 else:
                                     wnoise_0 = noise_0
                                 noise_dtype = noise_0.dtype
@@ -795,14 +804,22 @@ class OpMappraiser(Operator):
                                     else:
                                         rng = np.random.default_rng()
                                     wnoise_1 = rng.normal(scale=wnoise_sigma, size=nn)
-                                    # print("wnoise_1", wnoise_1[:10], seed, iobs, idet)
                                 else:
                                     wnoise_1 = noise_1
                                 
-                                if epsilon is not None:
-                                    wnoise_1 *= np.sqrt((1-epsilon/2)/(1+epsilon/2))
+                                wnoise_1 *= noise_factor
+                                    
+                                ### DEBUG BEGIN ###
+                                if self._rank == 0:
+                                    print("det #{} -> std(wnoise_0) = {}; std(wnoise_1) = {}".format(idet, np.std(wnoise_0), np.std(wnoise_1)), flush=True)
+                                ### DEBUG END ###
                                 
                                 invtt = self._noise2invtt(0.5*(wnoise_0-wnoise_1), nn, int(idet/2))
+
+                                ### DEBUG BEGIN ###
+                                if self._rank == 0:
+                                        print("det #{} -> invtt = {}".format(idet, invtt), flush=True)
+                                ### DEBUG END ###
 
                                 invtt_list.append(invtt)
                                 dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + nn)
