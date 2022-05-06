@@ -303,6 +303,30 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, 
     BJ->trash_pix = 0;
     MatLocalShape(BJ, 3);
 
+    // DEBUG pair-diff
+    if (rank == 0)
+    {
+        int nbr_values = BJ->m * BJ->nnz;
+        puts("Block-Jacobi preconditioner values");
+        for (int i = 0; i < nbr_values; i++)
+        {
+            if (i == 0)
+            {
+                printf("[%.5f,", BJ->values[i]);
+            }
+            else if (i == nbr_values - 1)
+            {
+                printf(" %.5f]\n", BJ->values[i]);
+            }
+            else
+            {
+                printf(" %.5f,", BJ->values[i]);
+            }
+        }
+    }
+    fflush(stdout);
+    // GUBED pair-diff
+
     return 0;
 }
 int precondjacobilike_avg(Mat A, Tpltz Nm1, double *c)
