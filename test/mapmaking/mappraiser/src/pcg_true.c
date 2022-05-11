@@ -17,7 +17,7 @@
 #include "midapack.h"
 #include "mappraiser.h"
 
-int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K)
+int PCG_GLS_true(char *outpath, char *ref, Mat *A, Mat *BJ, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K)
 {
     int i, j, k; // some indexes
     int m, n, rank, size;
@@ -49,7 +49,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     // Init CG descent
     //  double *c;
     //  c = (double *) malloc(n*sizeof(double));
-    Mat BJ;
+    // Mat BJ;
 
     // for no preconditionner:
     // for(j=0; j<n; j++)                    //
@@ -61,7 +61,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     // Compute preconditioner and process degenerate pixels
     // printf("Test\n");
     // fflush(stdout);
-    precondblockjacobilike(A, Nm1, &BJ, b, cond, lhits);
+    precondblockjacobilike(A, Nm1, BJ, b, cond, lhits);
     // printf("Post\n");
     // fflush(stdout);
     // Redefine number of pixels in the map
@@ -123,7 +123,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     //     printf("At*_g: index = %d, g[%d] = %.18f\n", A->lindices[i], i, g[i]);
     // }
 
-    MatVecProd(&BJ, g, Cg, 0);
+    MatVecProd(BJ, g, Cg, 0);
     // for(j=0; j<n; j++)                    //
     //   Cg[j]=c[j]*g[j]; 			//  Cg = C g  with C = Id
     // for(i=3360; i<3380; i++){
@@ -226,7 +226,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
         for (j = 0; j < n; j++) //   g = g + ro * (At Nm1 A) h
             g[j] = g[j] - ro * AtNm1Ah[j];
 
-        MatVecProd(&BJ, g, Cg, 0);
+        MatVecProd(BJ, g, Cg, 0);
         // for(j=0; j<n; j++)                  //
         //   Cg[j]=c[j]*g[j];                       //  Cg = C g  with C = Id
         // for(i=n-1; i>n-9; i--){//

@@ -304,28 +304,35 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, 
     MatLocalShape(BJ, 3);
 
     // DEBUG pair-diff
-    if (rank == 0)
-    {
-        int nbr_values = BJ->m * BJ->nnz;
-        puts("Block-Jacobi preconditioner values");
-        for (int i = 0; i < nbr_values; i++)
-        {
-            if (i == 0)
-            {
-                printf("[%.5f,", BJ->values[i]);
-            }
-            else if (i == nbr_values - 1)
-            {
-                printf(" %.5f]\n", BJ->values[i]);
-            }
-            else
-            {
-                printf(" %.5f,", BJ->values[i]);
-            }
-        }
-    }
-    fflush(stdout);
-    // GUBED pair-diff
+    // int npix = 0;
+    // MPI_Reduce(&n, &npix, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+    // if (rank == 0)
+    // {
+    //     puts("=== BJ-like preconditioner ===");
+    //     printf("calculated npix = %d\n", npix);
+        
+    //     int block_size = (BJ->nnz)*(BJ->nnz);
+    //     for (int i = 0; i < n; ++i)
+    //     {
+    //         for (int j = 0; j < block_size; ++j)
+    //         // print the nnz*nnz values of the block
+    //         {
+    //             if (j == 0)
+    //             {
+    //                 printf("pixel %d: [%f,", i, BJ->values[i*block_size + j]);
+    //             }
+    //             else if (j == block_size - 1)
+    //             {
+    //                 printf(" %f]\n", BJ->values[i*block_size + j]);
+    //             }
+    //             else
+    //             {
+    //                 printf(" %f,", BJ->values[i*block_size + j]);
+    //             }
+    //         }
+    //     }   
+    // }
+    // fflush(stdout);
 
     return 0;
 }
