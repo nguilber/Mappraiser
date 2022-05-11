@@ -20,7 +20,7 @@
 #include "midapack.h"
 #include "mappraiser.h"
 
-int x2map_pol(double *mapI, double *mapQ, double *mapU, double *Cond, int *hits, int npix, double *x, int *lstid, double *cond, int *lhits, int xsize, int Nnz);
+int x2map_pol(double *mapI, double *mapQ, double *mapU, double *Cond, int *hits, int npix, double *x, int *lstid, double *cond, int *lhits, int xsize, int Nnz, double *bjvalues, double *bjii, double *bjqq, double *bjuu);
 
 void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int Z_2lvl, int pointing_commflag, double tol, int maxiter, int enlFac, int ortho_alg, int bs_red, int nside, void *data_size_proc, int nb_blocks_loc, void *local_blocks_sizes, int Nnz, void *pix, void *pixweights, void *signal, double *noise, int lambda, double *invtt)
 {
@@ -189,9 +189,17 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
 
     int *lstid;
     lstid = (int *)calloc(mapsize, sizeof(int));
-    for (i = 0; i < mapsize; i++)
+    
+    // BJ
+    double *bjvalues;
+    bjvalues = (double *)calloc(mapsize, sizeof(double));
+    
+    for (i = 0; i < mapsize; ++i)
     {
-        lstid[i] = A.lindices[i + (A.nnz) * (A.trash_pix)];
+        lstid[i] = A.lindices[i + (Nnz) * (A.trash_pix)];
+
+        // BJ
+        bjvalues[i] = BJ.values[i*Nnz + i%Nnz];
     }
 
     if (rank != 0)
@@ -201,6 +209,9 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
         MPI_Send(x, mapsize, MPI_DOUBLE, 0, 2, comm);
         MPI_Send(cond, mapsize / Nnz, MPI_DOUBLE, 0, 3, comm);
         MPI_Send(lhits, mapsize / Nnz, MPI_INT, 0, 4, comm);
+
+        // BJ
+        MPI_Send(bjvalues, mapsize, MPI_DOUBLE, 0, 5, comm);
     }
 
     if (rank == 0)
@@ -223,6 +234,15 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
         double *Cond;
         Cond = (double *)calloc(npix, sizeof(double));
 
+        // BJ
+        double *bjii, *bjqq, *bjuu;
+        if (A.nnz == 3)
+        {
+            bjii = (double *)calloc(npix, sizeof(double));
+        }
+        bjqq = (double *)calloc(npix, sizeof(double));
+        bjuu = (double *)calloc(npix, sizeof(double));
+
         for (i = 0; i < size; i++)
         {
             if (i != 0)
@@ -235,30 +255,48 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
                     x = (double *)realloc(x, mapsize * sizeof(double));
                     cond = (double *)realloc(cond, mapsize * sizeof(double));
                     lhits = (int *)realloc(lhits, mapsize * sizeof(int));
+                    bjvalues = (double *)realloc(bjvalues, mapsize * sizeof(double));
                 }
                 MPI_Recv(lstid, mapsize, MPI_INT, i, 1, comm, &status);
                 MPI_Recv(x, mapsize, MPI_DOUBLE, i, 2, comm, &status);
                 MPI_Recv(cond, mapsize / Nnz, MPI_DOUBLE, i, 3, comm, &status);
                 MPI_Recv(lhits, mapsize / Nnz, MPI_INT, i, 4, comm, &status);
+
+                // BJ
+                MPI_Recv(bjvalues, mapsize, MPI_DOUBLE, i, 5, comm, &status);
             }
-            x2map_pol(mapI, mapQ, mapU, Cond, hits, npix, x, lstid, cond, lhits, mapsize, Nnz);
+            x2map_pol(mapI, mapQ, mapU, Cond, hits, npix, x, lstid, cond, lhits, mapsize, Nnz, bjvalues, bjii, bjqq, bjuu);
         }
-        printf("Checking output directory ... old files will be overwritten\n");
+        
+        printf("[rank %d] Checking output directory ... old files will be overwritten\n", rank);
+        fflush(stdout);
+
         char Imap_name[256];
         char Qmap_name[256];
         char Umap_name[256];
         char Condmap_name[256];
         char Hitsmap_name[256];
+
+        // BJ
+        char BJii_name[256];
+        char BJqq_name[256];
+        char BJuu_name[256];
+
         char nest = 1;
         char *cordsys = "C";
         int ret, w = 1;
 
         if (Nnz == 3)
+        {
             sprintf(Imap_name, "%s/mapI_%s.fits", outpath, ref);
+            sprintf(BJii_name, "%s/BJii_%s.fits", outpath, ref);
+        }
         sprintf(Qmap_name, "%s/mapQ_%s.fits", outpath, ref);
         sprintf(Umap_name, "%s/mapU_%s.fits", outpath, ref);
         sprintf(Condmap_name, "%s/Cond_%s.fits", outpath, ref);
         sprintf(Hitsmap_name, "%s/Hits_%s.fits", outpath, ref);
+        sprintf(BJqq_name, "%s/BJqq_%s.fits", outpath, ref);
+        sprintf(BJuu_name, "%s/BJuu_%s.fits", outpath, ref);
 
         if (Nnz == 3)
         {
@@ -268,6 +306,15 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
                 if (ret != 0)
                 {
                     printf("Error: unable to delete the file %s\n", Imap_name);
+                    w = 0;
+                }
+            }
+            if (access(BJii_name, F_OK) != -1)
+            {
+                ret = remove(BJii_name);
+                if (ret != 0)
+                {
+                    printf("Error: unable to delete the file %s\n", BJii_name);
                     w = 0;
                 }
             }
@@ -313,19 +360,48 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
             }
         }
 
+
+        if (access(BJqq_name, F_OK) != -1)
+        {
+            ret = remove(BJqq_name);
+            if (ret != 0)
+            {
+                printf("Error: unable to delete the file %s\n", BJqq_name);
+                w = 0;
+            }
+        }
+
+        if (access(BJuu_name, F_OK) != -1)
+        {
+            ret = remove(BJuu_name);
+            if (ret != 0)
+            {
+                printf("Error: unable to delete the file %s\n", BJuu_name);
+                w = 0;
+            }
+        }
+
         if (w == 1)
         {
-            printf("Writing HEALPix maps FITS files ...\n");
+            puts("Writing HEALPix maps FITS files...");
+            fflush(stdout);
+
             if (Nnz == 3)
+            {
                 write_map(mapI, TDOUBLE, nside, Imap_name, nest, cordsys);
+                write_map(bjii, TDOUBLE, nside, BJii_name, nest, cordsys);
+            }
             write_map(mapQ, TDOUBLE, nside, Qmap_name, nest, cordsys);
             write_map(mapU, TDOUBLE, nside, Umap_name, nest, cordsys);
             write_map(Cond, TDOUBLE, nside, Condmap_name, nest, cordsys);
             write_map(hits, TINT, nside, Hitsmap_name, nest, cordsys);
+            write_map(bjqq, TDOUBLE, nside, BJqq_name, nest, cordsys);
+            write_map(bjuu, TDOUBLE, nside, BJuu_name, nest, cordsys);
         }
         else
         {
-            printf("IO Error: Could not overwrite old files, map results will not be stored ;(\n");
+            puts("IO Error: Could not overwrite old files, map results will not be stored ;(");
+            fflush(stdout);
         }
     }
 
@@ -340,6 +416,9 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
     MatFree(&A);
     A.indices = NULL;
     A.values = NULL; // free memory
+
+    // TODO: free memory (BJ)?
+
     free(x);
     free(cond);
     free(lhits);
@@ -354,10 +433,8 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
     // MPI_Finalize();
 }
 
-
-int x2map_pol(double *mapI, double *mapQ, double *mapU, double *Cond, int *hits, int npix, double *x, int *lstid, double *cond, int *lhits, int xsize, int Nnz)
+int x2map_pol(double *mapI, double *mapQ, double *mapU, double *Cond, int *hits, int npix, double *x, int *lstid, double *cond, int *lhits, int xsize, int Nnz, double *bjvalues, double *bjii, double *bjqq, double *bjuu)
 {
-
     int i;
 
     for (i = 0; i < xsize; i++)
@@ -369,11 +446,18 @@ int x2map_pol(double *mapI, double *mapQ, double *mapU, double *Cond, int *hits,
                 mapI[(int)(lstid[i] / Nnz)] = x[i];
                 hits[(int)(lstid[i] / Nnz)] = lhits[(int)(i / Nnz)];
                 Cond[(int)(lstid[i] / Nnz)] = cond[(int)(i / Nnz)];
+                bjii[(int)(lstid[i] / Nnz)] = bjvalues[i];
             }
             else if (i % Nnz == 1)
+            {
                 mapQ[(int)(lstid[i] / Nnz)] = x[i];
+                bjqq[(int)(lstid[i] / Nnz)] = bjvalues[i];
+            }
             else
+            {
                 mapU[(int)(lstid[i] / Nnz)] = x[i];
+                bjuu[(int)(lstid[i] / Nnz)] = bjvalues[i];
+            }
         }
         else if (Nnz == 2)
         { // pair difference model
@@ -382,9 +466,13 @@ int x2map_pol(double *mapI, double *mapQ, double *mapU, double *Cond, int *hits,
                 mapQ[(int)(lstid[i] / Nnz)] = x[i];
                 hits[(int)(lstid[i] / Nnz)] = lhits[(int)(i / Nnz)];
                 Cond[(int)(lstid[i] / Nnz)] = cond[(int)(i / Nnz)];
+                bjqq[(int)(lstid[i] / Nnz)] = bjvalues[i];
             }
             else if (i % Nnz == 1)
+            {
                 mapU[(int)(lstid[i] / Nnz)] = x[i];
+                bjuu[(int)(lstid[i] / Nnz)] = bjvalues[i];
+            }
         }
     }
 

@@ -394,18 +394,6 @@ class OpMappraiser(Operator):
         """ Computes a periodogram from a noise timestream, and fits a PSD model
         to it, which is then used to build the first row of a Toeplitz block.
         """
-        # parameters
-        sampling_freq = self._params["samplerate"]
-        Max_lambda = 2**(int(math.log(nn/4,2))) # closest power of two to 1/4 of the timestream length
-        f_defl = sampling_freq/(np.pi*Max_lambda)
-        df = f_defl/2
-        block_size = 2**(int(math.log(sampling_freq*1./df,2)))
-
-        # Compute periodogram
-        f, psd = scipy.signal.periodogram(noise, sampling_freq,nfft=block_size,window='blackman')
-        # if idet==37:
-        #     print(len(f), flush=True)
-
         # distinguish case of white noise (no need to fit PSD in this case)
         if self._params["white_noise"]:
             factor = 1.0
@@ -417,9 +405,31 @@ class OpMappraiser(Operator):
             if (not self._pair_diff) and ((idet%2) == 1) and (epsilon is not None):
                     factor = (1-epsilon/2)/(1+epsilon/2)
             # psd_fit_m1 = white_psd(f,1/scaling)
-            return np.array([factor])  # np.array([1/factor])
+            
+            inv_tt = np.array([1 / factor])
+            # inv_tt = np.array([factor])
+
+            ### DEBUG _noise2invtt
+            # if self._rank == 0:
+            #     print("[proc {} in _noise2invtt] idet = {} ; invtt = {}".format(self._rank, idet, [factor]), flush=True)
+            
+            return inv_tt
 
         else:
+
+            # parameters
+            sampling_freq = self._params["samplerate"]
+            Max_lambda = 2**(int(math.log(nn/4,2))) # closest power of two to 1/4 of the timestream length
+            f_defl = sampling_freq/(np.pi*Max_lambda)
+            df = f_defl/2
+            block_size = 2**(int(math.log(sampling_freq*1./df,2)))
+
+            # Compute periodogram
+            f, psd = scipy.signal.periodogram(noise, sampling_freq,nfft=block_size,window='blackman')
+            # if idet==37:
+            #     print(len(f), flush=True)
+
+
             # Fit the psd model to the periodogram (in log scale)
             popt,pcov = curve_fit(logpsd_model,f[1:],np.log10(psd[1:]),p0=np.array([-7, -1.0, 0.1, 0.]), bounds=([-20, -10, 0., 0.], [0., 0., 10, 0.001]), maxfev = 1000)        # popt[1] = -5.
             # popt[2] = 2.
@@ -442,27 +452,27 @@ class OpMappraiser(Operator):
             psd_fit_m1 = np.zeros_like(f)
             psd_fit_m1[1:] = inversepsd_model(f[1:],10**(-popt[0]),popt[1],popt[2], popt[3])
 
-        # Initialize full size inverse PSD in frequency domain
-        fs = fftfreq(block_size, 1./sampling_freq)
-        psdm1 = np.zeros_like(fs)
+            # Initialize full size inverse PSD in frequency domain
+            fs = fftfreq(block_size, 1./sampling_freq)
+            psdm1 = np.zeros_like(fs)
 
-        # Symmetrize inverse PSD according to fs shape
-        psdm1[:int(block_size/2)] = psd_fit_m1[:-1] #psdfit[:int(block_size/2)]
-        psdm1[int(block_size/2):] = np.flip(psd_fit_m1[1:],0)
+            # Symmetrize inverse PSD according to fs shape
+            psdm1[:int(block_size/2)] = psd_fit_m1[:-1] #psdfit[:int(block_size/2)]
+            psdm1[int(block_size/2):] = np.flip(psd_fit_m1[1:],0)
 
-        # Compute inverse noise autocorrelation functions
-        inv_tt = np.real(np.fft.ifft(psdm1, n=block_size))
+            # Compute inverse noise autocorrelation functions
+            inv_tt = np.real(np.fft.ifft(psdm1, n=block_size))
 
-        # Define apodization window
-        window = scipy.signal.gaussian(2*self._params["Lambda"], 1./2*self._params["Lambda"])
-        window = np.fft.ifftshift(window)
-        window = window[:self._params["Lambda"]]
-        window = np.pad(window,(0,int(block_size/2-(self._params["Lambda"]))),'constant')
-        symw = np.zeros(block_size)
-        symw[:int(block_size/2)] = window
-        symw[int(block_size/2):] = np.flip(window,0)
+            # Define apodization window
+            window = scipy.signal.gaussian(2*self._params["Lambda"], 1./2*self._params["Lambda"])
+            window = np.fft.ifftshift(window)
+            window = window[:self._params["Lambda"]]
+            window = np.pad(window,(0,int(block_size/2-(self._params["Lambda"]))),'constant')
+            symw = np.zeros(block_size)
+            symw[:int(block_size/2)] = window
+            symw[int(block_size/2):] = np.flip(window,0)
 
-        inv_tt_w = np.multiply(symw, inv_tt, dtype = mappraiser.INVTT_TYPE)
+            inv_tt_w = np.multiply(symw, inv_tt, dtype = mappraiser.INVTT_TYPE)
 
         #effective inverse noise power
         # if self._rank == 0 and idet == 0:
@@ -471,7 +481,7 @@ class OpMappraiser(Operator):
             # np.save("psd0.npy",psdm1[:int(block_size/2)])
             # np.save("psd"+str(self._params["Lambda"])+".npy",psd[:int(block_size/2)])
 
-        return inv_tt_w[:self._params["Lambda"]] #, popt[0], popt[1], popt[2], popt[3]
+            return inv_tt_w[:self._params["Lambda"]] #, popt[0], popt[1], popt[2], popt[3]
 
     @function_timer
     def _prepare(self):
@@ -751,17 +761,15 @@ class OpMappraiser(Operator):
                                 # change noise rms of odd-index detectors
                                 wnoise *= noise_factor
                             
-                            ### DEBUG BEGIN ###
-                            if self._rank == 0:
-                                    print("det #{} -> std(wnoise) = {}".format(idet, np.std(wnoise)), flush=True)
-                            ### DEBUG END ###
+                            ### DEBUG _stage_noise
+                            # if self._rank == 0:
+                            #         print("det #{} -> std(wnoise) = {}".format(idet, np.std(wnoise)), flush=True)
 
                             invtt = self._noise2invtt(wnoise, nn, idet)
                             
-                            ### DEBUG BEGIN ###
-                            if self._rank == 0:
-                                    print("det #{} -> invtt = {}".format(idet, invtt), flush=True)
-                            ### DEBUG END ###
+                            ### DEBUG _stage_noise
+                            # if self._rank == 0:
+                            #         print("det #{} -> invtt = {}".format(idet, invtt), flush=True)
                             
                             invtt_list.append(invtt)
                             dslice = slice(idet * nsamp + offset, idet * nsamp + offset + nn)
@@ -809,17 +817,15 @@ class OpMappraiser(Operator):
                                 
                                 wnoise_1 *= noise_factor
                                     
-                                ### DEBUG BEGIN ###
-                                if self._rank == 0:
-                                    print("det #{} -> std(wnoise_0) = {}; std(wnoise_1) = {}".format(idet, np.std(wnoise_0), np.std(wnoise_1)), flush=True)
-                                ### DEBUG END ###
+                                ### DEBUG _stage_noise
+                                # if self._rank == 0:
+                                #     print("det #{} -> std(wnoise_0) = {}; std(wnoise_1) = {}".format(idet, np.std(wnoise_0), np.std(wnoise_1)), flush=True)
                                 
                                 invtt = self._noise2invtt(0.5*(wnoise_0-wnoise_1), nn, int(idet/2))
 
-                                ### DEBUG BEGIN ###
-                                if self._rank == 0:
-                                        print("det #{} -> invtt = {}".format(idet, invtt), flush=True)
-                                ### DEBUG END ###
+                                ### DEBUG _stage_noise
+                                # if self._rank == 0:
+                                #         print("det #{} -> invtt = {}".format(idet, invtt), flush=True)
 
                                 invtt_list.append(invtt)
                                 dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + nn)
