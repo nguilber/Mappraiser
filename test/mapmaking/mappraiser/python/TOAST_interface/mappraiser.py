@@ -6,6 +6,7 @@
 #@date: May 2019
 #@latest_update: January 2020
 
+from click import pass_context
 from toast.mpi import MPI, use_mpi
 
 import os
@@ -246,6 +247,13 @@ class OpMappraiser(Operator):
             dets,
             nside,
         )
+        
+        # DEBUG noise & weights
+        if self._rank == 0:
+            ncheck = 200
+            for i in range(ncheck):
+                print("std #{} -> rms = {}".format(i, np.std(self._mappraiser_noise[i*nsamp:(i+1)*nsamp])), flush=True)
+                print("   -> inv_tt = {}".format(self._mappraiser_invtt[i]), flush=True)
 
         self._MLmap(data_size_proc, nobsloc*ndet, local_blocks_sizes, nnz)
 
@@ -396,23 +404,22 @@ class OpMappraiser(Operator):
         """
         # distinguish case of white noise (no need to fit PSD in this case)
         if self._params["white_noise"]:
-            factor = 1.0
-            epsilon = self._params["epsilon_frac"]
-            # map-making is not sensible to scaling
-            # which is constant across ALL detectors
-            # -> the only case where we change smth is ML with
-            # modified noise rms in odd detectors (epsilon != 0)
-            if (not self._pair_diff) and ((idet%2) == 1) and (epsilon is not None):
-                    factor = (1-epsilon/2)/(1+epsilon/2)
-            # psd_fit_m1 = white_psd(f,1/scaling)
             
-            inv_tt = np.array([1 / factor])
-            # inv_tt = np.array([factor])
+            e = self._params["epsilon_frac"]
+            f_e = 1.0 if e is None else (1-e/2)/(1+e/2)
+            sigma2 = 10**-7
 
-            ### DEBUG _noise2invtt
-            # if self._rank == 0:
-            #     print("[proc {} in _noise2invtt] idet = {} ; invtt = {}".format(self._rank, idet, [factor]), flush=True)
+            if not self._pair_diff:  # ML case
+                if (idet % 2) == 0:
+                    pass
+                if (idet % 2) == 1:
+                    sigma2 *= f_e
+            else:  # PD case
+                sigma2 *= (1 + f_e) / 4
             
+            inv_tt = np.array([1 / sigma2])
+            # if self._rank == 0:
+            #     print("[_noise2invtt debug] idet = {} ; inv_tt = {}".format(idet, inv_tt), flush=True)
             return inv_tt
 
         else:
@@ -1206,6 +1213,7 @@ class OpMappraiser(Operator):
         invtt_list, noise_dtype = self._stage_noise(
            detectors, nsamp, ndet, nodecomm, nread
         )
+        
         self._mappraiser_invtt = np.array([np.array(invtt_i, dtype= mappraiser.INVTT_TYPE) for invtt_i in invtt_list])
         del invtt_list
         self._mappraiser_invtt = np.concatenate(self._mappraiser_invtt)
