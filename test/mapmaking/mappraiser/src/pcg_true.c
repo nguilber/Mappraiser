@@ -62,6 +62,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Mat *BJ, Tpltz Nm1, double *x
     // printf("Test\n");
     // fflush(stdout);
     precondblockjacobilike(A, Nm1, BJ, b, cond, lhits);
+
     // printf("Post\n");
     // fflush(stdout);
     // Redefine number of pixels in the map

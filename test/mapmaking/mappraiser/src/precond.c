@@ -66,7 +66,7 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, 
     // fflush(stdout);
     getlocalW(A, Nm1, vpixBlock, lhits);
     // printf("Test-p0\n");
-    // fflush(stdout);
+    // fflush(stdout);    
     // sum hits globally
     for (i = 0; i < n; i += A->nnz)
     {
@@ -83,7 +83,6 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, 
     free(hits_proc);
     // printf("Test-p1\n");
     // fflush(stdout);
-
     // communicate with the other processes to have the global reduce
     // TODO : This should be done in a more efficient way
     for (i = 0; i < n * (A->nnz); i += (A->nnz) * (A->nnz))
@@ -127,7 +126,6 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, 
                 vpixBlock[i + j] = vpixBlock_loc[(i - 6) / (A->nnz) + j];
         }
     }
-
     // printf("Test-p2\n");
     // fflush(stdout);
     // Compute the inverse of the global AtA blocks (beware this part is only valid for nnz = 3)
