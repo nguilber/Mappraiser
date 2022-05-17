@@ -116,6 +116,11 @@ def add_mappraiser_args(parser):
         "--wnoise_seed", required=False, default=None, type=np.int,
         help="Specify seed for white noise generation (for reproducible results)"
     )
+    
+    parser.add_argument(
+        "--ignore_pixels", required=False, default=None, type=str,
+        help="Ignore pixels to make separate maps from even and odd detectors in ML mapmaking. Possible values = (None, 'even,'odd')"
+    )
 
     return
 
@@ -144,6 +149,7 @@ def setup_mappraiser(args):
     params["epsilon_frac"] = args.epsilon_frac
     params["white_noise"] = args.white_noise
     params["wnoise_seed"] = args.wnoise_seed
+    params["ignore_pixels"] = args.ignore_pixels
 
     return params
 

@@ -619,9 +619,15 @@ class OpMappraiser(Operator):
             timer.start()
             if nodecomm.rank % nread == iread:
                 if not self._pair_diff:
-                    self._mappraiser_signal = self._cache.create(
-                    "signal", mappraiser.SIGNAL_TYPE, (nsamp * ndet,)
-                    )
+                    if self._params["ignore_pixels"] is None:
+                        self._mappraiser_signal = self._cache.create(
+                        "signal", mappraiser.SIGNAL_TYPE, (nsamp * ndet,)
+                        )
+                    else:
+                        #! separate maps
+                         self._mappraiser_signal = self._cache.create(
+                        "signal", mappraiser.SIGNAL_TYPE, (nsamp * int(ndet/2),)
+                        )                   
                 else:
                     self._mappraiser_signal = self._cache.create(
                     "signal", mappraiser.SIGNAL_TYPE, (nsamp * int(ndet/2),)
@@ -634,16 +640,31 @@ class OpMappraiser(Operator):
                     tod = obs["tod"]
                     if not self._pair_diff:
                         for idet, det in enumerate(detectors):
-                            # Get the signal.
-                            signal = tod.local_signal(det, self._name)
-                            signal_dtype = signal.dtype
-                            offset = global_offset
-                            local_V_size = len(signal)
-                            dslice = slice(idet * nsamp + offset, idet * nsamp + offset + local_V_size)
-                            self._mappraiser_signal[dslice] = signal
-                            offset += local_V_size
-                            local_blocks_sizes.append(local_V_size)
-
+                            if self._params["ignore_pixels"] is None:
+                                # Get the signal.
+                                signal = tod.local_signal(det, self._name)
+                                signal_dtype = signal.dtype
+                                offset = global_offset
+                                local_V_size = len(signal)
+                                dslice = slice(idet * nsamp + offset, idet * nsamp + offset + local_V_size)
+                                self._mappraiser_signal[dslice] = signal
+                                offset += local_V_size
+                                local_blocks_sizes.append(local_V_size)
+                            else:
+                                #! separate maps
+                                if (idet%2) == 0 and self._params["ignore_pixels"] == "even":
+                                    continue
+                                elif (idet%2) == 1 and self._params["ignore_pixels"] == "odd":
+                                    continue
+                                else:
+                                    signal = tod.local_signal(det, self._name)
+                                    signal_dtype = signal.dtype
+                                    offset = global_offset
+                                    local_V_size = len(signal)
+                                    dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + local_V_size)
+                                    self._mappraiser_signal[dslice] = signal
+                                    offset += local_V_size
+                                    local_blocks_sizes.append(local_V_size)
 
                             del signal
                         # Purge only after all detectors are staged in case some are aliased
@@ -707,9 +728,15 @@ class OpMappraiser(Operator):
             
             if nodecomm.rank % nread == iread:
                 if not self._pair_diff:
-                    self._mappraiser_noise = self._cache.create(
-                    "noise", mappraiser.SIGNAL_TYPE, (nsamp * ndet,)
-                    )
+                    if self._params["ignore_pixels"] is None:
+                        self._mappraiser_noise = self._cache.create(
+                        "noise", mappraiser.SIGNAL_TYPE, (nsamp * ndet,)
+                        )
+                    else:
+                        #! separate maps
+                        self._mappraiser_noise = self._cache.create(
+                        "noise", mappraiser.SIGNAL_TYPE, (nsamp * int(ndet/2),)
+                        )                       
                 else:
                     self._mappraiser_noise = self._cache.create(
                     "noise", mappraiser.SIGNAL_TYPE, (nsamp * int(ndet/2),)
@@ -743,34 +770,67 @@ class OpMappraiser(Operator):
 
                     if not self._pair_diff:
                         for idet, det in enumerate(detectors):
-                            
-                            # Get the signal.
-                            noise = tod.local_signal(det, self._noise_name)
-                            noise_dtype = noise.dtype
-                            offset = global_offset
-                            nn = len(noise)
+                            if self._params["ignore_pixels"] is None:
+                                # Get the signal.
+                                noise = tod.local_signal(det, self._noise_name)
+                                noise_dtype = noise.dtype
+                                offset = global_offset
+                                nn = len(noise)
 
-                            if white_noise:
-                                if seed is not None:
-                                    rng = np.random.default_rng(seed * 2**iobs * 3**idet)
+                                if white_noise:
+                                    if seed is not None:
+                                        rng = np.random.default_rng(seed * 2**iobs * 3**idet)
+                                    else:
+                                        rng = np.random.default_rng()
+                                    wnoise = rng.normal(scale=rms_even, size=nn)
                                 else:
-                                    rng = np.random.default_rng()
-                                wnoise = rng.normal(scale=rms_even, size=nn)
-                            else:
-                                wnoise = noise
+                                    wnoise = noise
 
-                            if (idet % 2) == 1:
-                                # change noise rms of odd-index detectors
-                                wnoise *= rms_factor_odd
-                            
-                            invtt = self._noise2invtt(wnoise, nn, idet)
-                                                        
-                            rms_list.append(np.std(wnoise))
-                            invtt_list.append(invtt)
-                            
-                            dslice = slice(idet * nsamp + offset, idet * nsamp + offset + nn)
-                            self._mappraiser_noise[dslice] = wnoise
-                            offset += nn
+                                if (idet % 2) == 1:
+                                    # change noise rms of odd-index detectors
+                                    wnoise *= rms_factor_odd
+                                
+                                invtt = self._noise2invtt(wnoise, nn, idet)
+                                                            
+                                rms_list.append(np.std(wnoise))
+                                invtt_list.append(invtt)
+                                
+                                dslice = slice(idet * nsamp + offset, idet * nsamp + offset + nn)
+                                self._mappraiser_noise[dslice] = wnoise
+                                offset += nn
+                            else:
+                                #! separate maps
+                                if (idet%2) == 0 and self._params["ignore_pixels"] == "even":
+                                    continue
+                                elif (idet%2) == 1 and self._params["ignore_pixels"] == "odd":
+                                    continue
+                                else:
+                                    noise = tod.local_signal(det, self._noise_name)
+                                    noise_dtype = noise.dtype
+                                    offset = global_offset
+                                    nn = len(noise)
+
+                                    if white_noise:
+                                        if seed is not None:
+                                            rng = np.random.default_rng(seed * 2**iobs * 3**idet)
+                                        else:
+                                            rng = np.random.default_rng()
+                                        wnoise = rng.normal(scale=rms_even, size=nn)
+                                    else:
+                                        wnoise = noise
+
+                                    if (idet % 2) == 1:
+                                        # change noise rms of odd-index detectors
+                                        wnoise *= rms_factor_odd
+                                    
+                                    invtt = self._noise2invtt(wnoise, nn, idet)
+                                                                
+                                    rms_list.append(np.std(wnoise))
+                                    invtt_list.append(invtt)
+                                    
+                                    dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + nn)
+                                    self._mappraiser_noise[dslice] = wnoise
+                                    offset += nn
                             del noise
                             del wnoise
                         # Purge only after all detectors are staged in case some are aliased
@@ -880,9 +940,15 @@ class OpMappraiser(Operator):
         """ Stage pixels
         """
         if not self._pair_diff:
-            self._mappraiser_pixels = self._cache.create(
-                "pixels", mappraiser.PIXEL_TYPE, (nsamp * ndet * nnz,)
-            )
+            if self._params["ignore_pixels"] is None:
+                self._mappraiser_pixels = self._cache.create(
+                    "pixels", mappraiser.PIXEL_TYPE, (nsamp * ndet * nnz,)
+                )
+            else:
+                #! separate maps
+                self._mappraiser_pixels = self._cache.create(
+                    "pixels", mappraiser.PIXEL_TYPE, (nsamp * int(ndet/2) * nnz,)
+                )
         else:
             self._mappraiser_pixels = self._cache.create(
                 "pixels", mappraiser.PIXEL_TYPE, (nsamp * int(ndet/2) * (nnz-1),)
@@ -896,48 +962,91 @@ class OpMappraiser(Operator):
             commonflags = None
             if not self._pair_diff:
                 for idet, det in enumerate(detectors):
-                    # Optionally get the flags, otherwise they are
-                    # assumed to have been applied to the pixel numbers.
-                    # N.B: MAPPRAISER doesn't use flags for now but might be useful for
-                    # future updates.
+                    if self._params["ignore_pixels"] is None:
+                        # Optionally get the flags, otherwise they are
+                        # assumed to have been applied to the pixel numbers.
+                        # N.B: MAPPRAISER doesn't use flags for now but might be useful for
+                        # future updates.
 
-                    if self._apply_flags:
-                        detflags = tod.local_flags(det, self._flag_name)
-                        commonflags = tod.local_common_flags(self._common_flag_name)
-                        flags = np.logical_or(
-                            (detflags & self._flag_mask) != 0,
-                            (commonflags & self._common_flag_mask) != 0,
+                        if self._apply_flags:
+                            detflags = tod.local_flags(det, self._flag_name)
+                            commonflags = tod.local_common_flags(self._common_flag_name)
+                            flags = np.logical_or(
+                                (detflags & self._flag_mask) != 0,
+                                (commonflags & self._common_flag_mask) != 0,
+                            )
+                            del detflags
+
+                        # get the pixels for the valid intervals from the cache
+
+                        pixelsname = "{}_{}".format(self._pixels, det)
+                        pixels = tod.cache.reference(pixelsname)
+                        pixels_dtype = pixels.dtype
+
+                        if not self._pixels_nested:
+                            # Madam expects the pixels to be in nested ordering.
+                            # This is not the case for Mappraiser but keeping it for now
+                            pixels = pixels.copy()
+                            good = pixels >= 0
+                            pixels[good] = hp.ring2nest(nside, pixels[good])
+
+                        if self._apply_flags:
+                            pixels = pixels.copy()
+                            pixels[flags] = -1
+
+                        offset = global_offset
+                        nn = len(pixels)
+                        dslice = slice(
+                            (idet * nsamp + offset) * nnz,
+                            (idet * nsamp + offset + nn) * nnz,
                         )
-                        del detflags
+                        # nnz = 3 is a mandatory assumption here (could easily be generalized ...)
+                        self._mappraiser_pixels[dslice] = nnz * np.repeat(pixels,nnz)
+                        self._mappraiser_pixels[dslice][1::nnz] += 1
+                        self._mappraiser_pixels[dslice][2::nnz] += 2
+                        offset += nn
+                    else:
+                        #! separate maps
+                        if self._apply_flags:
+                            detflags = tod.local_flags(det, self._flag_name)
+                            commonflags = tod.local_common_flags(self._common_flag_name)
+                            flags = np.logical_or(
+                                (detflags & self._flag_mask) != 0,
+                                (commonflags & self._common_flag_mask) != 0,
+                            )
+                            del detflags
 
-                    # get the pixels for the valid intervals from the cache
+                        if (idet%2) == 0 and self._params["ignore_pixels"] == "even":
+                            continue
+                        elif (idet%2) == 1 and self._params["ignore_pixels"] == "odd":
+                            continue
+                        else:
+                            pixelsname = "{}_{}".format(self._pixels, det)
+                            pixels = tod.cache.reference(pixelsname)
+                            pixels_dtype = pixels.dtype
 
-                    pixelsname = "{}_{}".format(self._pixels, det)
-                    pixels = tod.cache.reference(pixelsname)
-                    pixels_dtype = pixels.dtype
+                            if not self._pixels_nested:
+                                # Madam expects the pixels to be in nested ordering.
+                                # This is not the case for Mappraiser but keeping it for now
+                                pixels = pixels.copy()
+                                good = pixels >= 0
+                                pixels[good] = hp.ring2nest(nside, pixels[good])
 
-                    if not self._pixels_nested:
-                        # Madam expects the pixels to be in nested ordering.
-                        # This is not the case for Mappraiser but keeping it for now
-                        pixels = pixels.copy()
-                        good = pixels >= 0
-                        pixels[good] = hp.ring2nest(nside, pixels[good])
+                            if self._apply_flags:
+                                pixels = pixels.copy()
+                                pixels[flags] = -1
 
-                    if self._apply_flags:
-                        pixels = pixels.copy()
-                        pixels[flags] = -1
-
-                    offset = global_offset
-                    nn = len(pixels)
-                    dslice = slice(
-                        (idet * nsamp + offset) * nnz,
-                        (idet * nsamp + offset + nn) * nnz,
-                    )
-                    # nnz = 3 is a mandatory assumption here (could easily be generalized ...)
-                    self._mappraiser_pixels[dslice] = nnz * np.repeat(pixels,nnz)
-                    self._mappraiser_pixels[dslice][1::nnz] += 1
-                    self._mappraiser_pixels[dslice][2::nnz] += 2
-                    offset += nn
+                            offset = global_offset
+                            nn = len(pixels)
+                            dslice = slice(
+                                (int(idet/2) * nsamp + offset) * nnz,
+                                (int(idet/2) * nsamp + offset + nn) * nnz,
+                            )
+                            # nnz = 3 is a mandatory assumption here (could easily be generalized ...)
+                            self._mappraiser_pixels[dslice] = nnz * np.repeat(pixels,nnz)
+                            self._mappraiser_pixels[dslice][1::nnz] += 1
+                            self._mappraiser_pixels[dslice][2::nnz] += 2
+                            offset += nn
 
                     del pixels
                     if self._apply_flags:
@@ -1056,9 +1165,15 @@ class OpMappraiser(Operator):
             timer.start()
             if nodecomm.rank % nread == iread:
                 if not self._pair_diff:
-                    self._mappraiser_pixweights = self._cache.create(
-                    "pixweights", mappraiser.WEIGHT_TYPE, (nsamp * ndet * nnz,)
-                    )
+                    if self._params["ignore_pixels"] is None:
+                        self._mappraiser_pixweights = self._cache.create(
+                        "pixweights", mappraiser.WEIGHT_TYPE, (nsamp * ndet * nnz,)
+                        )
+                    else:
+                        #! separate maps
+                        self._mappraiser_pixweights = self._cache.create(
+                        "pixweights", mappraiser.WEIGHT_TYPE, (nsamp * int(ndet/2) * nnz,)
+                        )
                 else:
                     self._mappraiser_pixweights = self._cache.create(
                     "pixweights", mappraiser.WEIGHT_TYPE, (nsamp * int(ndet/2) * (nnz-1),)
@@ -1070,21 +1185,43 @@ class OpMappraiser(Operator):
                     tod = obs["tod"]
                     if not self._pair_diff:
                         for idet, det in enumerate(detectors):
-                            # get the pixels and weights for the valid intervals
-                            # from the cache
-                            weightsname = "{}_{}".format(self._weights, det)
-                            weights = tod.cache.reference(weightsname)
-                            weight_dtype = weights.dtype
-                            offset = global_offset
-                            nn = len(weights)
-                            dwslice = slice(
-                            (idet * nsamp + offset) * nnz,
-                            (idet * nsamp + offset + nn) * nnz,
-                            )
-                            self._mappraiser_pixweights[dwslice] = weights.flatten()[
-                            ::nnz_stride
-                            ]
-                            offset += nn
+                            if self._params["ignore_pixels"] is None:
+                                # get the pixels and weights for the valid intervals
+                                # from the cache
+                                weightsname = "{}_{}".format(self._weights, det)
+                                weights = tod.cache.reference(weightsname)
+                                weight_dtype = weights.dtype
+                                offset = global_offset
+                                nn = len(weights)
+                                dwslice = slice(
+                                (idet * nsamp + offset) * nnz,
+                                (idet * nsamp + offset + nn) * nnz,
+                                )
+                                self._mappraiser_pixweights[dwslice] = weights.flatten()[
+                                ::nnz_stride
+                                ]
+                                offset += nn
+                            else:
+                                #! separate maps
+                                if (idet%2) == 0 and self._params["ignore_pixels"] == "even":
+                                    continue
+                                elif (idet%2) == 1 and self._params["ignore_pixels"] == "odd":
+                                    continue
+                                else:
+                                    weightsname = "{}_{}".format(self._weights, det)
+                                    weights = tod.cache.reference(weightsname)
+                                    weight_dtype = weights.dtype
+                                    offset = global_offset
+                                    nn = len(weights)
+                                    dwslice = slice(
+                                    (int(idet/2) * nsamp + offset) * nnz,
+                                    (int(idet/2) * nsamp + offset + nn) * nnz,
+                                    )
+                                    self._mappraiser_pixweights[dwslice] = weights.flatten()[
+                                    ::nnz_stride
+                                    ]
+                                    offset += nn
+                            
                             del weights
                         # Purge the weights but restore them from the Mappraiser
                         # buffers when purge_weights=False.
