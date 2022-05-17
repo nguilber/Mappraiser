@@ -275,6 +275,8 @@ class OpMappraiser(Operator):
             nb_blocks_loc = int(nb_blocks_loc/2)
         else:
             nnz_bis = nnz
+            if self._params["ignore_pixels"] is not None:
+                nb_blocks_loc = int(nb_blocks_loc/2)
         # Compute the Maximum Likelihood map
         # os.environ["OMP_NUM_THREADS"] = "1"
         mappraiser.MLmap(
