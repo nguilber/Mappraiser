@@ -247,13 +247,6 @@ class OpMappraiser(Operator):
             dets,
             nside,
         )
-        
-        # DEBUG noise & weights
-        if self._rank == 0:
-            ncheck = 200
-            for i in range(ncheck):
-                print("std #{} -> rms = {}".format(i, np.std(self._mappraiser_noise[i*nsamp:(i+1)*nsamp])), flush=True)
-                print("   -> inv_tt = {}".format(self._mappraiser_invtt[i]), flush=True)
 
         self._MLmap(data_size_proc, nobsloc*ndet, local_blocks_sizes, nnz)
 
@@ -409,17 +402,15 @@ class OpMappraiser(Operator):
             f_e = 1.0 if e is None else (1-e/2)/(1+e/2)
             sigma2 = 10**-7
 
-            if not self._pair_diff:  # ML case
+            if not self._pair_diff:
                 if (idet % 2) == 0:
                     pass
                 if (idet % 2) == 1:
                     sigma2 *= f_e
-            else:  # PD case
+            else:
                 sigma2 *= (1 + f_e) / 4
             
             inv_tt = np.array([1 / sigma2])
-            # if self._rank == 0:
-            #     print("[_noise2invtt debug] idet = {} ; inv_tt = {}".format(idet, inv_tt), flush=True)
             return inv_tt
 
         else:
@@ -713,6 +704,7 @@ class OpMappraiser(Operator):
         for iread in range(nread):
             nodecomm.Barrier()
             timer.start()
+            
             if nodecomm.rank % nread == iread:
                 if not self._pair_diff:
                     self._mappraiser_noise = self._cache.create(
@@ -734,21 +726,24 @@ class OpMappraiser(Operator):
 
                 global_offset = 0
                 invtt_list = []
-                epsilon = self._params["epsilon_frac"]
-                # factor between rms of odd and even noise timestreams
-                noise_factor = 1.0 if epsilon is None else np.sqrt((1-epsilon/2)/(1+epsilon/2))
+                rms_list = []
+                
+                # params for comparison of ML and PD maps
                 white_noise = self._params["white_noise"]
-                wnoise_sigma = 10**(-3.5)
+                epsilon = self._params["epsilon_frac"]
                 seed = self._params["wnoise_seed"]
+                rms_factor_odd = 1.0 if epsilon is None else np.sqrt((2-epsilon)/(2+epsilon))
+                rms_even = 10**(-3.5)
                 # fknee_list = []
                 # fmin_list = []
                 # alpha_list = []
-                # logsigma2_list = []
+                # logsigma2_list = []                
                 for iobs, obs in enumerate(self._data.obs):
                     tod = obs["tod"]
 
                     if not self._pair_diff:
                         for idet, det in enumerate(detectors):
+                            
                             # Get the signal.
                             noise = tod.local_signal(det, self._noise_name)
                             noise_dtype = noise.dtype
@@ -756,31 +751,23 @@ class OpMappraiser(Operator):
                             nn = len(noise)
 
                             if white_noise:
-                                # typical white noise level
-                                # (sigma2 = 1e-7)
                                 if seed is not None:
                                     rng = np.random.default_rng(seed * 2**iobs * 3**idet)
                                 else:
                                     rng = np.random.default_rng()
-                                wnoise = rng.normal(scale=wnoise_sigma, size=nn)
+                                wnoise = rng.normal(scale=rms_even, size=nn)
                             else:
                                 wnoise = noise
 
                             if (idet % 2) == 1:
                                 # change noise rms of odd-index detectors
-                                wnoise *= noise_factor
+                                wnoise *= rms_factor_odd
                             
-                            ### DEBUG _stage_noise
-                            # if self._rank == 0:
-                            #         print("det #{} -> std(wnoise) = {}".format(idet, np.std(wnoise)), flush=True)
-
                             invtt = self._noise2invtt(wnoise, nn, idet)
-                            
-                            ### DEBUG _stage_noise
-                            # if self._rank == 0:
-                            #         print("det #{} -> invtt = {}".format(idet, invtt), flush=True)
-                            
+                                                        
+                            rms_list.append(np.std(wnoise))
                             invtt_list.append(invtt)
+                            
                             dslice = slice(idet * nsamp + offset, idet * nsamp + offset + nn)
                             self._mappraiser_noise[dslice] = wnoise
                             offset += nn
@@ -805,7 +792,7 @@ class OpMappraiser(Operator):
                                         rng = np.random.default_rng(seed * 2**iobs * 3**idet)
                                     else:
                                         rng = np.random.default_rng()
-                                    wnoise_0 = rng.normal(scale=wnoise_sigma, size=nn)
+                                    wnoise_0 = rng.normal(scale=rms_even, size=nn)
                                 else:
                                     wnoise_0 = noise_0
                                 noise_dtype = noise_0.dtype
@@ -820,23 +807,17 @@ class OpMappraiser(Operator):
                                         rng = np.random.default_rng(seed * 2**iobs * 3**idet)
                                     else:
                                         rng = np.random.default_rng()
-                                    wnoise_1 = rng.normal(scale=wnoise_sigma, size=nn)
+                                    wnoise_1 = rng.normal(scale=rms_even, size=nn)
                                 else:
                                     wnoise_1 = noise_1
                                 
-                                wnoise_1 *= noise_factor
-                                    
-                                ### DEBUG _stage_noise
-                                # if self._rank == 0:
-                                #     print("det #{} -> std(wnoise_0) = {}; std(wnoise_1) = {}".format(idet, np.std(wnoise_0), np.std(wnoise_1)), flush=True)
-                                
+                                wnoise_1 *= rms_factor_odd
+                                                                    
                                 invtt = self._noise2invtt(0.5*(wnoise_0-wnoise_1), nn, int(idet/2))
-
-                                ### DEBUG _stage_noise
-                                # if self._rank == 0:
-                                #         print("det #{} -> invtt = {}".format(idet, invtt), flush=True)
-
+                                
+                                rms_list.append(np.std(0.5*(wnoise_0-wnoise_1)))
                                 invtt_list.append(invtt)
+                                
                                 dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + nn)
                                 self._mappraiser_noise[dslice] = 0.5*(wnoise_0-wnoise_1)
                                 offset += nn
@@ -857,27 +838,36 @@ class OpMappraiser(Operator):
                 if self._rank == 0:
                     timer.report_clear("Stage noise {} / {}".format(iread + 1, nread))
 
-        # sendcounts = np.array(self._comm.gather(len(fknee_list), 0))
-        #
+        sendcounts = np.array(self._comm.gather(len(rms_list), 0))
+        
+        Rms_list = None
+        Invtt_list = None
         # Fknee_list = None
         # Fmin_list = None
         # Alpha_list = None
         # Logsigma2_list = None
-        #
-        # if self._rank ==0:
-        #     Fknee_list = np.empty(sum(sendcounts))
-        #     Fmin_list = np.empty(sum(sendcounts))
-        #     Alpha_list = np.empty(sum(sendcounts))
-        #     Logsigma2_list = np.empty(sum(sendcounts))
-        #
+        
+        if self._rank == 0:
+            Rms_list = np.empty(sum(sendcounts))
+            Invtt_list = np.empty(sum(sendcounts))
+            # Fknee_list = np.empty(sum(sendcounts))
+            # Fmin_list = np.empty(sum(sendcounts))
+            # Alpha_list = np.empty(sum(sendcounts))
+            # Logsigma2_list = np.empty(sum(sendcounts))
+
+        self._comm.Gatherv(np.array(rms_list), (Rms_list, sendcounts), 0)
+        self._comm.Gatherv(np.ravel(np.array(invtt_list)), (Invtt_list, sendcounts), 0)
         # self._comm.Gatherv(np.array(fknee_list),(Fknee_list,sendcounts),0)
         # self._comm.Gatherv(np.array(fmin_list),(Fmin_list, sendcounts),0)
         # self._comm.Gatherv(np.array(alpha_list),(Alpha_list, sendcounts),0)
         # self._comm.Gatherv(np.array(logsigma2_list),(Logsigma2_list, sendcounts),0)
 
+        outpath = self._params["output"]
+        # ref = self._params["ref"]
 
-
-        # if self._rank ==0:
+        if self._rank == 0:
+            np.save(outpath+"/Rms_list.npy", Rms_list)
+            np.save(outpath+"/Invtt_list.npy", Invtt_list)
         #     np.save("fknee.npy",Fknee_list)
         #     np.save("fmin.npy", Fmin_list)
         #     np.save("logsigma2.npy",Logsigma2_list)
