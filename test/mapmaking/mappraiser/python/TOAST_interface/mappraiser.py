@@ -275,7 +275,7 @@ class OpMappraiser(Operator):
             nb_blocks_loc = int(nb_blocks_loc/2)
         else:
             nnz_bis = nnz
-            if self._params["ignore_pixels"] is not None:
+            if self._params["ignore_dets"] is not None:
                 nb_blocks_loc = int(nb_blocks_loc/2)
         # Compute the Maximum Likelihood map
         # os.environ["OMP_NUM_THREADS"] = "1"
@@ -620,7 +620,7 @@ class OpMappraiser(Operator):
             timer.start()
             if nodecomm.rank % nread == iread:
                 if not self._pair_diff:
-                    if self._params["ignore_pixels"] is None:
+                    if self._params["ignore_dets"] is None:
                         self._mappraiser_signal = self._cache.create(
                         "signal", mappraiser.SIGNAL_TYPE, (nsamp * ndet,)
                         )
@@ -641,7 +641,7 @@ class OpMappraiser(Operator):
                     tod = obs["tod"]
                     if not self._pair_diff:
                         for idet, det in enumerate(detectors):
-                            if self._params["ignore_pixels"] is None:
+                            if self._params["ignore_dets"] is None:
                                 # Get the signal.
                                 signal = tod.local_signal(det, self._name)
                                 signal_dtype = signal.dtype
@@ -653,9 +653,9 @@ class OpMappraiser(Operator):
                                 local_blocks_sizes.append(local_V_size)
                             else:
                                 #! separate maps
-                                if (idet%2) == 0 and self._params["ignore_pixels"] == "even":
+                                if (idet%2) == 0 and self._params["ignore_dets"] == "even":
                                     continue
-                                elif (idet%2) == 1 and self._params["ignore_pixels"] == "odd":
+                                elif (idet%2) == 1 and self._params["ignore_dets"] == "odd":
                                     continue
                                 else:
                                     signal = tod.local_signal(det, self._name)
@@ -729,7 +729,7 @@ class OpMappraiser(Operator):
             
             if nodecomm.rank % nread == iread:
                 if not self._pair_diff:
-                    if self._params["ignore_pixels"] is None:
+                    if self._params["ignore_dets"] is None:
                         self._mappraiser_noise = self._cache.create(
                         "noise", mappraiser.SIGNAL_TYPE, (nsamp * ndet,)
                         )
@@ -770,7 +770,7 @@ class OpMappraiser(Operator):
 
                     if not self._pair_diff:
                         for idet, det in enumerate(detectors):
-                            if self._params["ignore_pixels"] is None:
+                            if self._params["ignore_dets"] is None:
                                 # Get the signal.
                                 noise = tod.local_signal(det, self._noise_name)
                                 noise_dtype = noise.dtype
@@ -800,9 +800,9 @@ class OpMappraiser(Operator):
                                 offset += nn
                             else:
                                 #! separate maps
-                                if (idet%2) == 0 and self._params["ignore_pixels"] == "even":
+                                if (idet%2) == 0 and self._params["ignore_dets"] == "even":
                                     continue
-                                elif (idet%2) == 1 and self._params["ignore_pixels"] == "odd":
+                                elif (idet%2) == 1 and self._params["ignore_dets"] == "odd":
                                     continue
                                 else:
                                     noise = tod.local_signal(det, self._noise_name)
@@ -940,7 +940,7 @@ class OpMappraiser(Operator):
         """ Stage pixels
         """
         if not self._pair_diff:
-            if self._params["ignore_pixels"] is None:
+            if self._params["ignore_dets"] is None:
                 self._mappraiser_pixels = self._cache.create(
                     "pixels", mappraiser.PIXEL_TYPE, (nsamp * ndet * nnz,)
                 )
@@ -962,7 +962,7 @@ class OpMappraiser(Operator):
             commonflags = None
             if not self._pair_diff:
                 for idet, det in enumerate(detectors):
-                    if self._params["ignore_pixels"] is None:
+                    if self._params["ignore_dets"] is None:
                         # Optionally get the flags, otherwise they are
                         # assumed to have been applied to the pixel numbers.
                         # N.B: MAPPRAISER doesn't use flags for now but might be useful for
@@ -1016,9 +1016,9 @@ class OpMappraiser(Operator):
                             )
                             del detflags
 
-                        if (idet%2) == 0 and self._params["ignore_pixels"] == "even":
+                        if (idet%2) == 0 and self._params["ignore_dets"] == "even":
                             continue
-                        elif (idet%2) == 1 and self._params["ignore_pixels"] == "odd":
+                        elif (idet%2) == 1 and self._params["ignore_dets"] == "odd":
                             continue
                         else:
                             pixelsname = "{}_{}".format(self._pixels, det)
@@ -1165,7 +1165,7 @@ class OpMappraiser(Operator):
             timer.start()
             if nodecomm.rank % nread == iread:
                 if not self._pair_diff:
-                    if self._params["ignore_pixels"] is None:
+                    if self._params["ignore_dets"] is None:
                         self._mappraiser_pixweights = self._cache.create(
                         "pixweights", mappraiser.WEIGHT_TYPE, (nsamp * ndet * nnz,)
                         )
@@ -1185,7 +1185,7 @@ class OpMappraiser(Operator):
                     tod = obs["tod"]
                     if not self._pair_diff:
                         for idet, det in enumerate(detectors):
-                            if self._params["ignore_pixels"] is None:
+                            if self._params["ignore_dets"] is None:
                                 # get the pixels and weights for the valid intervals
                                 # from the cache
                                 weightsname = "{}_{}".format(self._weights, det)
@@ -1203,9 +1203,9 @@ class OpMappraiser(Operator):
                                 offset += nn
                             else:
                                 #! separate maps
-                                if (idet%2) == 0 and self._params["ignore_pixels"] == "even":
+                                if (idet%2) == 0 and self._params["ignore_dets"] == "even":
                                     continue
-                                elif (idet%2) == 1 and self._params["ignore_pixels"] == "odd":
+                                elif (idet%2) == 1 and self._params["ignore_dets"] == "odd":
                                     continue
                                 else:
                                     weightsname = "{}_{}".format(self._weights, det)
