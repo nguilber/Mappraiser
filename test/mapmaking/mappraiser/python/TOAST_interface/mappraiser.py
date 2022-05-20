@@ -781,7 +781,7 @@ class OpMappraiser(Operator):
 
                                 if white_noise:
                                     if seed is not None:
-                                        rng = np.random.default_rng(seed * 2**iobs * 3**idet)
+                                        rng = np.random.default_rng(seed * 2**iobs * 3**idet * 5**self._rank)
                                     else:
                                         rng = np.random.default_rng()
                                     wnoise = rng.normal(scale=rms_even, size=nn)
@@ -814,7 +814,7 @@ class OpMappraiser(Operator):
 
                                     if white_noise:
                                         if seed is not None:
-                                            rng = np.random.default_rng(seed * 2**iobs * 3**idet)
+                                            rng = np.random.default_rng(seed * 2**iobs * 3**idet * 5**self._rank)
                                         else:
                                             rng = np.random.default_rng()
                                         wnoise = rng.normal(scale=rms_even, size=nn)
@@ -851,7 +851,7 @@ class OpMappraiser(Operator):
                                 nn = len(noise_0)
                                 if white_noise:
                                     if seed is not None:
-                                        rng = np.random.default_rng(seed * 2**iobs * 3**idet)
+                                        rng = np.random.default_rng(seed * 2**iobs * 3**idet * 5**self._rank)
                                     else:
                                         rng = np.random.default_rng()
                                     wnoise_0 = rng.normal(scale=rms_even, size=nn)
@@ -866,7 +866,7 @@ class OpMappraiser(Operator):
                                 
                                 if white_noise:
                                     if seed is not None:
-                                        rng = np.random.default_rng(seed * 2**iobs * 3**idet)
+                                        rng = np.random.default_rng(seed * 2**iobs * 3**idet * 5**self._rank)
                                     else:
                                         rng = np.random.default_rng()
                                     wnoise_1 = rng.normal(scale=rms_even, size=nn)
