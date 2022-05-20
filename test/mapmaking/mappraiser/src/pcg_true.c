@@ -17,6 +17,8 @@
 #include "midapack.h"
 #include "mappraiser.h"
 
+int apply_weights(Tpltz Nm1, double *tod);
+
 int PCG_GLS_true(char *outpath, char *ref, Mat *A, Mat *BJ, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K)
 {
     int i, j, k; // some indexes
@@ -24,11 +26,9 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Mat *BJ, Tpltz Nm1, double *x
     double localreduce; // reduce buffer
     double st, t;       // timers
     double solve_time;
-    double res, res0, *res_rel;
+    double res, res0, res_rel;
     double *tmp;
     FILE *fp;
-
-    res_rel = (double *)malloc(1 * sizeof(double));
 
     m = A->m;                      // number of local time samples
     n = A->lcount;                 // number of local pixels
@@ -103,38 +103,36 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Mat *BJ, Tpltz Nm1, double *x
 
     st = MPI_Wtime();
 
-    MatVecProd(A, x, _g, 0); //
-    // for(i=0; i<50; i++){//
+    // Compute RHS - initial guess
+    MatVecProd(A, x, _g, 0);
+    // for(i=0; i<50; i++){
     //     printf("MatVecProd: _g[%d] = %f\n",i,_g[i]);
     // }
 
-    for (i = 0; i < m; i++)              //
-        _g[i] = b[i] + noise[i] - _g[i]; //
+    for (i = 0; i < m; i++)
+        _g[i] = b[i] + noise[i] - _g[i];
     // for(i=0; i<50; i++){
     //   printf("b-_g:_g[%d] = %f\n",i,_g[i]);
     // }
 
-    stbmmProd(Nm1, _g); // _g = Nm1 (b-Ax)
-    // for(i=0; i<50; i++){//
-    //     printf("Nm1*_g: _g[%d] = %f\n",i,_g[i]);
-    // }
+    apply_weights(Nm1, _g); // _g = Nm1 (d-Ax0) (d = signal + noise)
 
-    TrMatVecProd(A, _g, g, 0); //  g = At _g
+    TrMatVecProd(A, _g, g, 0); // g = At _g
     // for(i=0; i<50; i++){			//
     //     printf("At*_g: index = %d, g[%d] = %.18f\n", A->lindices[i], i, g[i]);
     // }
 
     MatVecProd(BJ, g, Cg, 0);
-    // for(j=0; j<n; j++)                    //
-    //   Cg[j]=c[j]*g[j]; 			//  Cg = C g  with C = Id
+    // for(j=0; j<n; j++)
+    //   Cg[j]=c[j]*g[j]; 			// Cg = C g  with C = Id
     // for(i=3360; i<3380; i++){
     //     printf("index = %d , Cg[%d]=%.18f\n", A->lindices[i], i, Cg[i]);
     // }
 
-    for (j = 0; j < n; j++) //  h = -Cg
+    for (j = 0; j < n; j++) // h = Cg
         h[j] = Cg[j];
 
-    g2pix = 0.0; // g2 = "res"
+    g2pix = 0.0; // g2pix = "Cg res"
     localreduce = 0.0;
     for (i = 0; i < n; i++) //  g2 = (Cg , g)
         localreduce += Cg[i] * g[i] * pixpond[i];
@@ -144,22 +142,21 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Mat *BJ, Tpltz Nm1, double *x
     t = MPI_Wtime();
 
     solve_time += (t - st);
+
     // Just to check with the true norm:
     if (TRUE_NORM == 1)
     {
         res = 0.0; // g2 = "res"
         localreduce = 0.0;
-        for (i = 0; i < n; i++) //  g2 = (Cg , g)
+        for (i = 0; i < n; i++) //  g2 = (g , g)
             localreduce += g[i] * g[i] * pixpond[i];
 
         MPI_Allreduce(&localreduce, &res, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
     }
     else
     {
-
         res = g2pix;
-
-    } // end if
+    }
 
     double g2pixB = g2pix;
     double tol2rel = tol * tol * res; // tol*tol*g2pixB;//*g2pixB;//tol;//*tol*g2;
@@ -167,16 +164,18 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Mat *BJ, Tpltz Nm1, double *x
     // Test if already converged
     if (rank == 0)
     {
-        *res_rel = sqrt(res) / sqrt(res0);
-        printf("res=%e \n", res);
-        printf("k=%d res_g2pix=%e res_g2pix_rel=%e res_rel=%e t=%lf\n", 0, g2pix, sqrt(g2pix) / sqrt(g2pixB), sqrt(res) / sqrt(res0), t - st);
+        res_rel = sqrt(res) / sqrt(res0);
+        // printf("res=%e \n", res);
+        // printf("k=%d res_g2pix=%e res_g2pix_rel=%e res_rel=%e t=%lf\n", 0, g2pix, sqrt(g2pix) / sqrt(g2pixB), sqrt(res) / sqrt(res0), t - st);
+        printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", 0, res, g2pix, res_rel, t - st);
         char filename[256];
         sprintf(filename, "%s/pcg_residuals_%s.dat", outpath, ref);
         fp = fopen(filename, "wb");
-        fwrite(res_rel, sizeof(double), 1, fp);
+        fwrite(&res_rel, sizeof(double), 1, fp);
+        fflush(stdout);
     }
 
-    if (res < tol)
+    if (res <= tol)
     {                  //
         if (rank == 0) //
             printf("--> converged (%e < %e)\n", res, tol);
@@ -184,7 +183,6 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Mat *BJ, Tpltz Nm1, double *x
     }
 
     st = MPI_Wtime();
-
     fflush(stdout);
 
     // PCG Descent Loop
@@ -195,14 +193,17 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Mat *BJ, Tpltz Nm1, double *x
         // for(i=0; i<8; i++){//
         //     printf("MatVecProd: Ah[%d] = %f\n",i,Ah[i]);
         // }
-        stbmmProd(Nm1, Nm1Ah); // Nm1Ah = Nm1 Ah   (Nm1Ah == Ah)
+        
+        apply_weights(Nm1, Nm1Ah); // Nm1Ah = Nm1 Ah   (Nm1Ah == Ah)
         // for(i=0; i<8; i++){//
         //     printf("Nm1Ah: Nm1Ah[%d] = %f\n",i,Nm1Ah[i]);
         // }
-        TrMatVecProd(A, Nm1Ah, AtNm1Ah, 0); //  AtNm1Ah = At Nm1Ah
+
+        TrMatVecProd(A, Nm1Ah, AtNm1Ah, 0); // AtNm1Ah = At Nm1Ah
         // for(i=n-1; i>n-9; i--){//
         //     printf("lhs: AtNm1Ah[%d] = %f\n",i,AtNm1Ah[i]);
         // }
+
         coeff = 0.0;
         localreduce = 0.0;
         for (i = 0; i < n; i++)
@@ -216,20 +217,19 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Mat *BJ, Tpltz Nm1, double *x
               localreduce+= g[i]*Cg[i] *pixpond[i] ;
             MPI_Allreduce(&localreduce, &ro, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
         */
-        ro = g2pix;
 
-        ro = ro / coeff;
+        ro = g2pix / coeff;
         // printf("ro = %f\n",ro);
 
-        for (j = 0; j < n; j++)      //  x = x + ro*h
-            x[j] = x[j] + ro * h[j]; //
+        for (j = 0; j < n; j++) // x = x + ro*h
+            x[j] = x[j] + ro * h[j];
 
-        for (j = 0; j < n; j++) //   g = g + ro * (At Nm1 A) h
+        for (j = 0; j < n; j++) // g = g + ro * (At Nm1 A) h
             g[j] = g[j] - ro * AtNm1Ah[j];
 
         MatVecProd(BJ, g, Cg, 0);
-        // for(j=0; j<n; j++)                  //
-        //   Cg[j]=c[j]*g[j];                       //  Cg = C g  with C = Id
+        // for(j=0; j<n; j++)
+        //   Cg[j]=c[j]*g[j]; //  Cg = C g  with C = Id
         // for(i=n-1; i>n-9; i--){//
         //     printf("g[%d] = %.34f\n",i,g[i]);
         //     printf("Cg[%d] = %.34f\n",i,Cg[i]);
@@ -256,49 +256,46 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Mat *BJ, Tpltz Nm1, double *x
         }
         else
         {
-
             res = g2pix;
-
-        } // end if
+        }
 
         if (rank == 0)
         { // print iterate info
-            *res_rel = sqrt(res) / sqrt(res0);
-            printf("k=%d res_g2pix=%e res_g2pix_rel=%e res_rel=%e t=%lf \n", k, g2pix, sqrt(g2pix) / sqrt(g2pixB), sqrt(res) / sqrt(res0), t - st);
-            fwrite(res_rel, sizeof(double), 1, fp);
+            res_rel = sqrt(res) / sqrt(res0);
+            // printf("k=%d res_g2pix=%e res_g2pix_rel=%e res_rel=%e t=%lf \n", k, g2pix, sqrt(g2pix) / sqrt(g2pixB), sqrt(res) / sqrt(res0), t - st);
+            printf("k = %d, res = %e, g2pix = %e, res_rel = %e, time = %lf\n", k, res, g2pixp, res_rel, t - st);
+            fwrite(&res_rel, sizeof(double), 1, fp);
         }
-        //   if(g2pix<tol2rel){                         //
         fflush(stdout);
 
-        if (res < tol2rel)
+        if (res <= tol2rel)
         {
             if (rank == 0)
-            { //
+            {
                 printf("--> converged (%e < %e) \n", res, tol2rel);
-                printf("--> i.e. \t (%e < %e) \n", sqrt(res / res0), tol);
+                printf("--> i.e. \t (%e < %e) \n", res_rel, tol);
                 printf("--> solve time = %lf \n", solve_time);
                 fclose(fp);
             }
             break;
         }
         if (g2pix > g2pixp)
-        {                  //
-            if (rank == 0) //
+        {
+            if (rank == 0)
                 printf("--> g2pix>g2pixp pb (%e > %e) \n", g2pix, g2pixp);
-            //    break;                        //
         }
 
         st = MPI_Wtime();
 
         gamma = g2pix / g2pixp;
 
-        for (j = 0; j < n; j++) // h = h * gamma - Cg
+        for (j = 0; j < n; j++) // h = h * gamma + Cg
             h[j] = h[j] * gamma + Cg[j];
 
     } // End loop
 
-    if (k == K)
-    { // check unconverged
+    if (k == K) // check unconverged
+    {
         if (rank == 0)
         {
             printf("--> unconverged, max iterate reached (%lf > %lf)\n", g2pix, tol2rel);
@@ -313,7 +310,29 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Mat *BJ, Tpltz Nm1, double *x
     free(Ah);
     free(g);
     free(AtNm1Ah);
-    free(res_rel);
 
     return 0;
 }
+
+/* Weights TOD data according to the adopted noise model*/
+int apply_weights(Tpltz Nm1, double* tod){
+    int t_id; //time sample index in local data
+    int i,j;
+
+    // Use straightforward loop for white noise model
+    if (Nm1.tpltzblocks[0].lambda == 1){
+        // Here it is assumed that we use a single bandwidth for all TOD intervals, i.e. lambda is the same for all Toeplitz blocks
+        t_id = 0;
+        for(i=0;i<Nm1.nb_blocks_loc;i++){
+          for(j=0;j<Nm1.tpltzblocks[i].n;j++){
+            tod[t_id+j] = Nm1.tpltzblocks[i].T_block[0] * tod[t_id+j];
+          }
+          t_id += Nm1.tpltzblocks[i].n;
+        }
+    }
+    // Use stbmmProd routine for correlated noise model (No det-det correlations for now)
+    else
+        stbmmProd(Nm1, tod);
+
+    return 0;
+} 

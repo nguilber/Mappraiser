@@ -49,6 +49,12 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, 
     vpixBlock = (double *)malloc(n * (A->nnz) * sizeof(double));
     hits_proc = (double *)malloc(n * sizeof(double));
 
+    if(indices_new == NULL || vpixBlock_loc == NULL || vpixBlock == NULL || hits_proc == NULL)
+    {
+        printf("Out of memory: memory allocation failed");
+        exit(1);
+    }
+
     // //Init vpixBlock
     // for(i=0;i<n*(A->nnz);i++)
     //   vpixBlock[i] = 0.;
@@ -64,9 +70,12 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, 
     // Compute local Atdiag(N^1)A
     // printf("Test0\n");
     // fflush(stdout);
+
+    // Compute local Atdiag(N^1)A
     getlocalW(A, Nm1, vpixBlock, lhits);
     // printf("Test-p0\n");
-    // fflush(stdout);    
+    // fflush(stdout);
+
     // sum hits globally
     for (i = 0; i < n; i += A->nnz)
     {
@@ -83,6 +92,7 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, 
     free(hits_proc);
     // printf("Test-p1\n");
     // fflush(stdout);
+
     // communicate with the other processes to have the global reduce
     // TODO : This should be done in a more efficient way
     for (i = 0; i < n * (A->nnz); i += (A->nnz) * (A->nnz))
@@ -126,8 +136,10 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, 
                 vpixBlock[i + j] = vpixBlock_loc[(i - 6) / (A->nnz) + j];
         }
     }
+    free(vpixBlock_loc);
     // printf("Test-p2\n");
     // fflush(stdout);
+    
     // Compute the inverse of the global AtA blocks (beware this part is only valid for nnz = 3)
     int uncut_pixel_index = 0;
     for (i = 0; i < n * (A->nnz); i += (A->nnz) * (A->nnz))
@@ -161,6 +173,7 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, 
         cond[(int)i / (A->nnz * A->nnz)] = rcond;
         // printf("Test-p4\n");
         // fflush(stdout);
+
         // Compute det
         // TODO: This should take into account the fact that the blocks are symmetric
         if (A->nnz == 3)
@@ -176,7 +189,7 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ, double *b, double *cond, 
         // printf("Test-p5\n");
         // fflush(stdout);
 
-        if (rcond > 1e-1)
+        if (rcond > 1e-6)
         {
             invdet = 1 / det;
 
