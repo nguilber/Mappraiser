@@ -1348,6 +1348,7 @@ class OpMappraiser(Operator):
         self._mappraiser_invtt = np.concatenate(self._mappraiser_invtt)
         if self._params["uniform_w"] == 1:
             self._mappraiser_invtt = np.ones_like(self._mappraiser_invtt)
+        self._mappraiser_invtt /= self._mappraiser_invtt[0] # Scale invtt to avoid potential round-offs
         if self._verbose:
             nodecomm.Barrier()
             if self._rank == 0:

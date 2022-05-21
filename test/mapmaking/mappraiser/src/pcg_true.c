@@ -21,7 +21,7 @@
 #include "midapack.h"
 #include "mappraiser.h"
 
-int apply_weights(Tpltz Nm1, double* tod);
+int apply_weights(Tpltz Nm1, double* tod, int rank);
 
 int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl)
 {
@@ -84,7 +84,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     for (i = 0; i < m; i++)
         _g[i] = b[i] + noise[i] - _g[i];
 
-    apply_weights(Nm1,_g);  // _g = Nm1 (d-Ax0)  (d = signal + noise)
+    apply_weights(Nm1,_g, rank);  // _g = Nm1 (d-Ax0)  (d = signal + noise)
 
     TrMatVecProd(A, _g, g, 0); // g = At _g
 
@@ -150,7 +150,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
         MatVecProd(A, h, Ah, 0);            // Ah = A h
         
-        apply_weights(Nm1, Nm1Ah);          // Nm1Ah = Nm1 Ah   (Nm1Ah == Ah)
+        apply_weights(Nm1, Nm1Ah, rank);          // Nm1Ah = Nm1 Ah   (Nm1Ah == Ah)
         
         TrMatVecProd(A, Nm1Ah, AtNm1Ah, 0); // AtNm1Ah = At Nm1Ah
 
@@ -253,19 +253,25 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 }
 
 /* Weights TOD data according to the adopted noise model*/
-int apply_weights(Tpltz Nm1, double* tod){
+int apply_weights(Tpltz Nm1, double* tod, int rank){
     int t_id; //time sample index in local data
     int i,j;
+    double w;
     
     // Use straightforward loop for white noise model
     if (Nm1.tpltzblocks[0].lambda == 1){
         // Here it is assumed that we use a single bandwidth for all TOD intervals, i.e. lambda is the same for all Toeplitz blocks
         t_id = 0;
         for(i=0;i<Nm1.nb_blocks_loc;i++){
-          for(j=0;j<Nm1.tpltzblocks[i].n;j++){
-            tod[t_id+j] = Nm1.tpltzblocks[i].T_block[0] * tod[t_id+j];
-          }
-          t_id += Nm1.tpltzblocks[i].n;
+            // Show weights for 10 first blocks in rank 0
+            if (rank == 0 && i < 10){
+                w = Nm1.tpltzblocks[i].T_block[0];
+                printf("[rank %d] Weight of block %d = %lf\n",rank, i, w);
+            }
+            for(j=0;j<Nm1.tpltzblocks[i].n;j++){
+                tod[t_id+j] = Nm1.tpltzblocks[i].T_block[0] * tod[t_id+j];
+            }
+            t_id += Nm1.tpltzblocks[i].n;
         }
     }
     // Use stbmmProd routine for correlated noise model (No det-det correlations for now)
