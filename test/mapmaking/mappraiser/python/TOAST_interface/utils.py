@@ -38,10 +38,6 @@ def add_mappraiser_args(parser):
         action="store_true",
         help="Process differenced TOD [default]",
     )
-    parser.add_argument(
-        "--solver", required=False, default=0, type=np.int,
-        help="Choose map-making solver: 0->PCG, 1->ECG"
-    )
     parser.add_argument("--precond", required=False, default=0, type=np.int, help="Choose map-making preconditioner: 0->BD, 1->2lvl a priori, 2->2lvl a posteriori"
     )
     parser.add_argument("--Z_2lvl", required=False, default=0, type=np.int, help="2lvl deflation size"

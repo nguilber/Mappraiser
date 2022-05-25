@@ -72,6 +72,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
     printf("[rank %d] size=%d \t m=%d \t Nb_t_Intervals=%d \n", rank, size, m, Nb_t_Intervals);
     printf("[rank %d] Nb_t_Intervals_loc=%d \n", rank, Nb_t_Intervals_loc );
     fflush(stdout);
+  }
 
   //Pointing matrix init
   st=MPI_Wtime();

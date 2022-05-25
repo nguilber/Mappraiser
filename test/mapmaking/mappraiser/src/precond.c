@@ -221,53 +221,44 @@ int commScheme(Mat *A, double *vpixDiag, int pflag){
   double *lvalues, *com_val, *out_val;
 
 #if W_MPI
-    lvalues = (double *)malloc((A->lcount - (A->nnz) * (A->trash_pix)) * sizeof(double)); /*<allocate and set to 0.0 local values*/
-    memcpy(lvalues, vpixDiag, (A->lcount - (A->nnz) * (A->trash_pix)) * sizeof(double));  /*<copy local values into result values*/
+  lvalues = (double *)malloc((A->lcount - (A->nnz) * (A->trash_pix)) * sizeof(double)); /*<allocate and set to 0.0 local values*/
+  memcpy(lvalues, vpixDiag, (A->lcount - (A->nnz) * (A->trash_pix)) * sizeof(double));  /*<copy local values into result values*/
 
-    nRmax = 0;
-    nSmax = 0;
+  nRmax = 0;
+  nSmax = 0;
 
-    if (A->flag == BUTTERFLY)
-    { /*<branch butterfly*/
-        // memcpy(out_values, lvalues, (A->lcount) *sizeof(double)); /*<copy local values into result values*/
-        for (k = 0; k < A->steps; k++) /*compute max communication buffer size*/
-            if (A->nR[k] > nRmax)
-                nRmax = A->nR[k];
-        for (k = 0; k < A->steps; k++)
-            if (A->nS[k] > nSmax)
-                nSmax = A->nS[k];
+  if (A->flag == BUTTERFLY){ /*<branch butterfly*/
+    // memcpy(out_values, lvalues, (A->lcount) *sizeof(double)); /*<copy local values into result values*/
+    for (k = 0; k < A->steps; k++) /*compute max communication buffer size*/
+      if (A->nR[k] > nRmax)
+        nRmax = A->nR[k];
+    for (k = 0; k < A->steps; k++)
+      if (A->nS[k] > nSmax)
+        nSmax = A->nS[k];
 
-        com_val = (double *)malloc(A->com_count * sizeof(double));
-        for (i = 0; i < A->com_count; i++)
-        {
-            com_val[i] = 0.0;
-        }
-        // already done    memcpy(vpixDiag, lvalues, (A->lcount) *sizeof(double)); /*<copy local values into result values*/
-        m2m(lvalues, A->lindices + (A->nnz) * (A->trash_pix), A->lcount - (A->nnz) * (A->trash_pix), com_val, A->com_indices, A->com_count);
-        butterfly_reduce(A->R, A->nR, nRmax, A->S, A->nS, nSmax, com_val, A->steps, A->comm);
-        m2m(com_val, A->com_indices, A->com_count, vpixDiag, A->lindices + (A->nnz) * (A->trash_pix), A->lcount - (A->nnz) * (A->trash_pix));
-        free(com_val);
+    com_val = (double *)malloc(A->com_count * sizeof(double));
+    for (i = 0; i < A->com_count; i++){
+      com_val[i] = 0.0;
     }
-    else if (A->flag == BUTTERFLY_BLOCKING_1)
-    {
-        for (k = 0; k < A->steps; k++) // compute max communication buffer size
-            if (A->nR[k] > nRmax)
-                nRmax = A->nR[k];
-        for (k = 0; k < A->steps; k++)
-            if (A->nS[k] > nSmax)
-                nSmax = A->nS[k];
-        com_val = (double *)malloc(A->com_count * sizeof(double));
-        for (i = 0; i < A->com_count; i++)
-            com_val[i] = 0.0;
-        m2m(lvalues, A->lindices + (A->nnz) * (A->trash_pix), A->lcount - (A->nnz) * (A->trash_pix), com_val, A->com_indices, A->com_count);
-        butterfly_blocking_1instr_reduce(A->R, A->nR, nRmax, A->S, A->nS, nSmax, com_val, A->steps, A->comm);
-        m2m(com_val, A->com_indices, A->com_count, vpixDiag, A->lindices + (A->nnz) * (A->trash_pix), A->lcount - (A->nnz) * (A->trash_pix));
-        free(com_val);
-    }
-    //already done    memcpy(vpixDiag, lvalues, (A->lcount) *sizeof(double)); /*<copy local values into result values*/
-    m2m(lvalues, A->lindices+(A->nnz)*(A->trash_pix), A->lcount-(A->nnz)*(A->trash_pix), com_val, A->com_indices, A->com_count);
+    // already done    memcpy(vpixDiag, lvalues, (A->lcount) *sizeof(double)); /*<copy local values into result values*/
+    m2m(lvalues, A->lindices + (A->nnz) * (A->trash_pix), A->lcount - (A->nnz) * (A->trash_pix), com_val, A->com_indices, A->com_count);
     butterfly_reduce(A->R, A->nR, nRmax, A->S, A->nS, nSmax, com_val, A->steps, A->comm);
-    m2m(com_val, A->com_indices, A->com_count, vpixDiag, A->lindices+(A->nnz)*(A->trash_pix), A->lcount-(A->nnz)*(A->trash_pix));
+    m2m(com_val, A->com_indices, A->com_count, vpixDiag, A->lindices + (A->nnz) * (A->trash_pix), A->lcount - (A->nnz) * (A->trash_pix));
+    free(com_val);
+  }
+  else if (A->flag == BUTTERFLY_BLOCKING_1){
+    for (k = 0; k < A->steps; k++) // compute max communication buffer size
+      if (A->nR[k] > nRmax)
+        nRmax = A->nR[k];
+    for (k = 0; k < A->steps; k++)
+      if (A->nS[k] > nSmax)
+        nSmax = A->nS[k];
+    com_val = (double *)malloc(A->com_count * sizeof(double));
+    for (i = 0; i < A->com_count; i++)
+      com_val[i] = 0.0;
+    m2m(lvalues, A->lindices + (A->nnz) * (A->trash_pix), A->lcount - (A->nnz) * (A->trash_pix), com_val, A->com_indices, A->com_count);
+    butterfly_blocking_1instr_reduce(A->R, A->nR, nRmax, A->S, A->nS, nSmax, com_val, A->steps, A->comm);
+    m2m(com_val, A->com_indices, A->com_count, vpixDiag, A->lindices + (A->nnz) * (A->trash_pix), A->lcount - (A->nnz) * (A->trash_pix));
     free(com_val);
   }
   else if(A->flag == BUTTERFLY_BLOCKING_1){
