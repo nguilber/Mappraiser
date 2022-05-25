@@ -46,7 +46,13 @@ def add_mappraiser_args(parser):
     )
     parser.add_argument("--Z_2lvl", required=False, default=0, type=np.int, help="2lvl deflation size"
     )
-    parser.add_argument("--ptcomm_flag", required=False, default=6, type=np.int, help="Choose collective communication scheme"
+    parser.add_argument(
+        "--solver", required=False, default=0, type=np.int,
+        help="Choose map-making solver: 0->PCG, 1->ECG"
+    )
+    parser.add_argument(
+        "--ptcomm_flag", required=False, default=6, type=np.int,
+        help="Choose collective communication scheme"
     )
     parser.add_argument(
         "--tol", required=False, default=1e-6, type=np.double,
@@ -153,6 +159,11 @@ def setup_mappraiser(args):
     params["ortho_alg"] = args.ortho_alg
     params["bs_red"] = args.bs_red
     
+    params["epsilon_frac"] = args.epsilon_frac
+    params["white_noise"] = args.white_noise
+    params["wnoise_seed"] = args.wnoise_seed
+    params["ignore_dets"] = args.ignore_dets
+
     params["epsilon_frac"] = args.epsilon_frac
     params["white_noise"] = args.white_noise
     params["wnoise_seed"] = args.wnoise_seed

@@ -394,24 +394,25 @@ class OpMappraiser(Operator):
 
         return inv_tt_w[:self._params["Lambda"]]
 
-    def _noise2invtt(self, noise, nn, idet):
+    def _noise2invtt(self, noise, nn, idet, rms_even=None, rms_factor=None):
         """ Computes a periodogram from a noise timestream, and fits a PSD model
         to it, which is then used to build the first row of a Toeplitz block.
         """
         # distinguish case of white noise (no need to fit PSD in this case)
         if self._params["white_noise"]:
             
-            e = self._params["epsilon_frac"]
-            f_e = 1.0 if e is None else (1-e/2)/(1+e/2)
-            sigma2 = 10**-7
+            assert rms_even is not None and rms_factor is not None
+            
+            f = rms_factor ** 2
+            sigma2 = rms_even ** 2
 
             if not self._pair_diff:
                 if (idet % 2) == 0:
                     pass
                 if (idet % 2) == 1:
-                    sigma2 *= f_e
+                    sigma2 *= f
             else:
-                sigma2 *= (1 + f_e) / 4
+                sigma2 *= (1 + f) / 4
             
             inv_tt = np.array([1 / sigma2])
             return inv_tt
@@ -475,12 +476,12 @@ class OpMappraiser(Operator):
 
             inv_tt_w = np.multiply(symw, inv_tt, dtype = mappraiser.INVTT_TYPE)
 
-        #effective inverse noise power
-        # if self._rank == 0 and idet == 0:
-            # psd = np.abs(np.fft.fft(inv_tt_w,n=block_size))
-            # np.save("freq.npy",fs[:int(block_size/2)])
-            # np.save("psd0.npy",psdm1[:int(block_size/2)])
-            # np.save("psd"+str(self._params["Lambda"])+".npy",psd[:int(block_size/2)])
+            #effective inverse noise power
+            # if self._rank == 0 and idet == 0:
+            #     psd = np.abs(np.fft.fft(inv_tt_w,n=block_size))
+            #     np.save("freq.npy",fs[:int(block_size/2)])
+            #     np.save("psd0.npy",psdm1[:int(block_size/2)])
+            #     np.save("psd"+str(self._params["Lambda"])+".npy",psd[:int(block_size/2)])
 
             return inv_tt_w[:self._params["Lambda"]] #, popt[0], popt[1], popt[2], popt[3]
 
@@ -817,7 +818,7 @@ class OpMappraiser(Operator):
                                     # change noise rms of odd-index detectors
                                     wnoise *= rms_factor_odd
                                 
-                                invtt = self._noise2invtt(wnoise, nn, idet)
+                                invtt = self._noise2invtt(wnoise, nn, idet, rms_even, rms_factor_odd)
                                                             
                                 rms_list.append(np.std(wnoise))
                                 
@@ -853,7 +854,7 @@ class OpMappraiser(Operator):
                                         # change noise rms of odd-index detectors
                                         wnoise *= rms_factor_odd
                                     
-                                    invtt = self._noise2invtt(wnoise, nn, idet)
+                                    invtt = self._noise2invtt(wnoise, nn, idet, rms_even, rms_factor_odd)
                                                                 
                                     rms_list.append(np.std(wnoise))
                                     
@@ -907,7 +908,8 @@ class OpMappraiser(Operator):
                                 
                                 wnoise_1 *= rms_factor_odd
                                                                     
-                                invtt = self._noise2invtt(0.5*(wnoise_0-wnoise_1), nn, int(idet/2))
+                                invtt = self._noise2invtt(0.5*(wnoise_0-wnoise_1), nn, int(idet/2), rms_even,
+                                                          rms_factor_odd)
                                 
                                 rms_list.append(np.std(0.5*(wnoise_0-wnoise_1)))
                                 

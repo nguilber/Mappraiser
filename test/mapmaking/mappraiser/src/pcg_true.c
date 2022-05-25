@@ -258,7 +258,6 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 int apply_weights(Tpltz Nm1, double* tod, int rank){
     int t_id; //time sample index in local data
     int i,j;
-    double w;
     
     // Use straightforward loop for white noise model
     if (Nm1.tpltzblocks[0].lambda == 1){

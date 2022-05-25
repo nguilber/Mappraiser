@@ -21,7 +21,7 @@
 
 #define eps 1.0e-15
 
-//do the local Atdiag(Nm1)A with as output a block-diagonal matrix (stored as a vector) in the pixel domain
+// do the local Atdiag(Nm1)A with as output a block-diagonal matrix (stored as a vector) in the pixel domain
 int getlocalW(Mat *A, Tpltz Nm1, double *vpixBlock, int *lhits)
 {
   int           i, j, k, l ;                       // some indexes
@@ -121,7 +121,7 @@ int getlocalW(Mat *A, Tpltz Nm1, double *vpixBlock, int *lhits)
     }
   }//end of the loop over the blocks
 
-  return 0;
+    return 0;
 }
 
 //do the local diag( At diag(Nm1) A ) with as output a vector in the pixel domain
@@ -210,7 +210,7 @@ int getlocDiagN(Mat *A, Tpltz Nm1, double *vpixDiag)
     }
   }//end of the loop over the blocks
 
-  return 0;
+    return 0;
 }
 
 //communication scheme in the pixel domain for the vector vpixDiag
@@ -221,24 +221,48 @@ int commScheme(Mat *A, double *vpixDiag, int pflag){
   double *lvalues, *com_val, *out_val;
 
 #if W_MPI
-  lvalues = (double *) malloc((A->lcount-(A->nnz)*(A->trash_pix)) *sizeof(double));    /*<allocate and set to 0.0 local values*/
-  memcpy(lvalues, vpixDiag, (A->lcount-(A->nnz)*(A->trash_pix)) *sizeof(double)); /*<copy local values into result values*/
+    lvalues = (double *)malloc((A->lcount - (A->nnz) * (A->trash_pix)) * sizeof(double)); /*<allocate and set to 0.0 local values*/
+    memcpy(lvalues, vpixDiag, (A->lcount - (A->nnz) * (A->trash_pix)) * sizeof(double));  /*<copy local values into result values*/
 
-  nRmax=0;
-  nSmax=0;
+    nRmax = 0;
+    nSmax = 0;
 
-  if(A->flag  == BUTTERFLY){                                  /*<branch butterfly*/
-    //memcpy(out_values, lvalues, (A->lcount) *sizeof(double)); /*<copy local values into result values*/
-    for(k=0; k< A->steps; k++)                                  /*compute max communication buffer size*/
-      if(A->nR[k] > nRmax)
-        nRmax = A->nR[k];
-    for(k=0; k< A->steps; k++)
-      if(A->nS[k] > nSmax)
-        nSmax = A->nS[k];
+    if (A->flag == BUTTERFLY)
+    { /*<branch butterfly*/
+        // memcpy(out_values, lvalues, (A->lcount) *sizeof(double)); /*<copy local values into result values*/
+        for (k = 0; k < A->steps; k++) /*compute max communication buffer size*/
+            if (A->nR[k] > nRmax)
+                nRmax = A->nR[k];
+        for (k = 0; k < A->steps; k++)
+            if (A->nS[k] > nSmax)
+                nSmax = A->nS[k];
 
-    com_val=(double *) malloc( A->com_count *sizeof(double));
-    for(i=0; i < A->com_count; i++){
-      com_val[i]=0.0;
+        com_val = (double *)malloc(A->com_count * sizeof(double));
+        for (i = 0; i < A->com_count; i++)
+        {
+            com_val[i] = 0.0;
+        }
+        // already done    memcpy(vpixDiag, lvalues, (A->lcount) *sizeof(double)); /*<copy local values into result values*/
+        m2m(lvalues, A->lindices + (A->nnz) * (A->trash_pix), A->lcount - (A->nnz) * (A->trash_pix), com_val, A->com_indices, A->com_count);
+        butterfly_reduce(A->R, A->nR, nRmax, A->S, A->nS, nSmax, com_val, A->steps, A->comm);
+        m2m(com_val, A->com_indices, A->com_count, vpixDiag, A->lindices + (A->nnz) * (A->trash_pix), A->lcount - (A->nnz) * (A->trash_pix));
+        free(com_val);
+    }
+    else if (A->flag == BUTTERFLY_BLOCKING_1)
+    {
+        for (k = 0; k < A->steps; k++) // compute max communication buffer size
+            if (A->nR[k] > nRmax)
+                nRmax = A->nR[k];
+        for (k = 0; k < A->steps; k++)
+            if (A->nS[k] > nSmax)
+                nSmax = A->nS[k];
+        com_val = (double *)malloc(A->com_count * sizeof(double));
+        for (i = 0; i < A->com_count; i++)
+            com_val[i] = 0.0;
+        m2m(lvalues, A->lindices + (A->nnz) * (A->trash_pix), A->lcount - (A->nnz) * (A->trash_pix), com_val, A->com_indices, A->com_count);
+        butterfly_blocking_1instr_reduce(A->R, A->nR, nRmax, A->S, A->nS, nSmax, com_val, A->steps, A->comm);
+        m2m(com_val, A->com_indices, A->com_count, vpixDiag, A->lindices + (A->nnz) * (A->trash_pix), A->lcount - (A->nnz) * (A->trash_pix));
+        free(com_val);
     }
     //already done    memcpy(vpixDiag, lvalues, (A->lcount) *sizeof(double)); /*<copy local values into result values*/
     m2m(lvalues, A->lindices+(A->nnz)*(A->trash_pix), A->lcount-(A->nnz)*(A->trash_pix), com_val, A->com_indices, A->com_count);
@@ -337,8 +361,8 @@ int commScheme(Mat *A, double *vpixDiag, int pflag){
     exit(1);
   }
 #endif
-  free(lvalues);
-  return 0;
+    free(lvalues);
+    return 0;
 }
 
 /** @brief Compute Diag(A' diag(Nm1) A). This an old deprecated routine
@@ -358,59 +382,74 @@ int DiagAtA(Mat *A, double *diag, int pflag){
     for (j=0; j< A->nnz; j++)                                   /*<dot products */
       lvalues[A->indices[i*(A->nnz)+j]]+=(A->values[i*(A->nnz)+j]*A->values[i*(A->nnz)+j]) ;//*vdiagNm1[i];
 
+    lvalues = (double *)malloc(A->lcount * sizeof(double)); /*<allocate and set to 0.0 local va
+  lues*/
+    for (i = 0; i < A->lcount; i++)
+        lvalues[i] = 0.0;
 
+    // Naive computation with a full defined diag(Nm1):
+    for (i = 0; i < A->m; i++)
+        for (j = 0; j < A->nnz; j++)                                                                              /*<dot products */
+            lvalues[A->indices[i * (A->nnz) + j]] += (A->values[i * (A->nnz) + j] * A->values[i * (A->nnz) + j]); //*vdiagNm1[i];
 
 #if W_MPI
-  nRmax=0;  nSmax=0;
+    nRmax = 0;
+    nSmax = 0;
 
-  if(A->flag  == BUTTERFLY){                                  /*<branch butterfly*/
-    //memcpy(out_values, lvalues, (A->lcount) *sizeof(double)); /*<copy local values into result values*/
-    for(k=0; k< A->steps; k++)                                  /*compute max communication buffer size*/
-      if(A->nR[k] > nRmax)
-        nRmax = A->nR[k];
-    for(k=0; k< A->steps; k++)
-      if(A->nS[k] > nSmax)
-        nSmax = A->nS[k];
+    if (A->flag == BUTTERFLY)
+    { /*<branch butterfly*/
+        // memcpy(out_values, lvalues, (A->lcount) *sizeof(double)); /*<copy local values into result values*/
+        for (k = 0; k < A->steps; k++) /*compute max communication buffer size*/
+            if (A->nR[k] > nRmax)
+                nRmax = A->nR[k];
+        for (k = 0; k < A->steps; k++)
+            if (A->nS[k] > nSmax)
+                nSmax = A->nS[k];
 
-    double *com_val;
-    com_val=(double *) malloc( A->com_count *sizeof(double));
-    for(i=0; i < A->com_count; i++){
-      com_val[i]=0.0;
+        double *com_val;
+        com_val = (double *)malloc(A->com_count * sizeof(double));
+        for (i = 0; i < A->com_count; i++)
+        {
+            com_val[i] = 0.0;
+        }
+        memcpy(diag, lvalues, (A->lcount) * sizeof(double)); /*<copy local values into result values*/
+        m2m(lvalues, A->lindices, A->lcount, com_val, A->com_indices, A->com_count);
+        butterfly_reduce(A->R, A->nR, nRmax, A->S, A->nS, nSmax, com_val, A->steps, A->comm);
+        m2m(com_val, A->com_indices, A->com_count, diag, A->lindices, A->lcount);
+        free(com_val);
     }
-    memcpy(diag, lvalues, (A->lcount) *sizeof(double)); /*<copy local values into result values*/
-    m2m(lvalues, A->lindices, A->lcount, com_val, A->com_indices, A->com_count);
-    butterfly_reduce(A->R, A->nR, nRmax, A->S, A->nS, nSmax, com_val, A->steps, A->comm);
-    m2m(com_val, A->com_indices, A->com_count, diag, A->lindices, A->lcount);
-    free(com_val);
-  }
-  else if(A->flag == RING){
-    memcpy(diag, lvalues, (A->lcount) *sizeof(double)); /*<copy local values into result values*/
-    for(k=1; k< A->steps; k++)                                  /*compute max communication buffer size*/
-      if(A->nR[k] > nRmax)
-        nRmax = A->nR[k];
+    else if (A->flag == RING)
+    {
+        memcpy(diag, lvalues, (A->lcount) * sizeof(double)); /*<copy local values into result values*/
+        for (k = 1; k < A->steps; k++)                       /*compute max communication buffer size*/
+            if (A->nR[k] > nRmax)
+                nRmax = A->nR[k];
 
-    nSmax = nRmax;
-    ring_reduce(A->R, A->nR, nRmax, A->S, A->nS, nSmax, lvalues, diag, A->steps, A->comm);
-  }
-  else if(A->flag == NONBLOCKING){
-    memcpy(diag, lvalues, (A->lcount) *sizeof(double)); /*<copy local values into result values*/
-    ring_nonblocking_reduce(A->R, A->nR, A->S, A->nS, lvalues, diag, A->steps, A->comm);
-  }
-  else if(A->flag == NOEMPTY){
-    memcpy(diag, lvalues, (A->lcount) *sizeof(double)); /*<copy local values into result values*/
-    int ne=0;
-    for(k=1; k< A->steps; k++)
-      if(A->nR[k]!=0)
-        ne++;
+        nSmax = nRmax;
+        ring_reduce(A->R, A->nR, nRmax, A->S, A->nS, nSmax, lvalues, diag, A->steps, A->comm);
+    }
+    else if (A->flag == NONBLOCKING)
+    {
+        memcpy(diag, lvalues, (A->lcount) * sizeof(double)); /*<copy local values into result values*/
+        ring_nonblocking_reduce(A->R, A->nR, A->S, A->nS, lvalues, diag, A->steps, A->comm);
+    }
+    else if (A->flag == NOEMPTY)
+    {
+        memcpy(diag, lvalues, (A->lcount) * sizeof(double)); /*<copy local values into result values*/
+        int ne = 0;
+        for (k = 1; k < A->steps; k++)
+            if (A->nR[k] != 0)
+                ne++;
 
-    ring_noempty_reduce(A->R, A->nR, ne, A->S, A->nS, ne, lvalues, diag, A->steps, A->comm);
-  }
-  else{
-    return 1;
-  }
+        ring_noempty_reduce(A->R, A->nR, ne, A->S, A->nS, ne, lvalues, diag, A->steps, A->comm);
+    }
+    else
+    {
+        return 1;
+    }
 #endif
-  free(lvalues);
-  return 0;
+    free(lvalues);
+    return 0;
 }
 
 int get_pixshare_pond(Mat *A, double *pixpond )
