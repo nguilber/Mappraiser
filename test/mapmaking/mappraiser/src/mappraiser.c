@@ -34,6 +34,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   double	st, t;		 	//timer, start time
   int 		rank, size;
   MPI_Status status;
+  Mat *BJ;
 
 
   //mkl_set_num_threads(1); // Circumvent an MKL bug
@@ -56,8 +57,6 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
     printf("[rank %d] M=%ld\n", rank, M);
     fflush(stdout);
   }
-  printf("Nnz = %d\n",Nnz);
-  fflush(stdout);
 
   //compute distribution indexes over the processes
   m = ((int *)data_size_proc)[rank];
@@ -77,7 +76,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
 
   //Pointing matrix init
   st=MPI_Wtime();
-  A.trash_pix =0;
+  A.trash_pix = 0;
   MatInit( &A, m, Nnz, pix, pixweights, pointing_commflag, comm);
   t=MPI_Wtime();
   if (rank==0) {
@@ -105,7 +104,12 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
       ll[i] = id0pix[A.indices[i*A.nnz]/(A.nnz)];
       id0pix[A.indices[i*A.nnz]/(A.nnz)] = i;
     }
-    // printf("Nnz = %d\n",Nnz);
+  }
+  A.id0pix = id0pix;
+  A.ll = ll;
+  t=MPI_Wtime();
+  if (rank==0) {
+    printf("[rank %d] Total pixel-to-time domain mapping time=%lf \n", rank, t-st);
     fflush(stdout);
   }
 
@@ -164,7 +168,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   st=MPI_Wtime();
   // Conjugate Gradient
   if(solver == 0)
-    PCG_GLS_true(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, precond, Z_2lvl);
+    PCG_GLS_true(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, precond, Z_2lvl, &BJ);
   else if (solver == 1)
     ECG_GLS(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, enlFac, ortho_alg, bs_red);
   else {
@@ -199,7 +203,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
         lstid[i] = A.lindices[i + (Nnz) * (A.trash_pix)];
 
         // BJ
-        bjvalues[i] = BJ.values[i*Nnz + i%Nnz];
+        bjvalues[i] = BJ->values[i*Nnz + i%Nnz];
     }
 
     if (rank != 0)

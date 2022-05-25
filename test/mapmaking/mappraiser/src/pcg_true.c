@@ -23,7 +23,7 @@
 
 int apply_weights(Tpltz Nm1, double* tod, int rank);
 
-int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl)
+int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl, Mat **BJ)
 {
     int    i, j, k;     // some indexes
     int    m, n;        // number of local time samples, number of local pixels
@@ -55,6 +55,8 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
     if (Z_2lvl == 0) Z_2lvl = size;
     build_precond(&p, &pixpond, &n, A, &Nm1, &x, b, noise, cond, lhits, tol, Z_2lvl, precond);
+
+    *BJ = &(p->BJ_inv);
 
 
     t = MPI_Wtime();
@@ -247,7 +249,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     free(gp);
     free(AtNm1Ah);
     free(Ah);
-    free_precond(&p);
+    //free_precond(&p);
 
     return 0;
 }
@@ -263,11 +265,6 @@ int apply_weights(Tpltz Nm1, double* tod, int rank){
         // Here it is assumed that we use a single bandwidth for all TOD intervals, i.e. lambda is the same for all Toeplitz blocks
         t_id = 0;
         for(i=0;i<Nm1.nb_blocks_loc;i++){
-            // Show weights for 10 first blocks in rank 0
-            if (rank == 0 && i < 10){
-                w = Nm1.tpltzblocks[i].T_block[0];
-                printf("[rank %d] Weight of block %d = %lf\n",rank, i, w);
-            }
             for(j=0;j<Nm1.tpltzblocks[i].n;j++){
                 tod[t_id+j] = Nm1.tpltzblocks[i].T_block[0] * tod[t_id+j];
             }

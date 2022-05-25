@@ -10,6 +10,7 @@ from click import pass_context
 from toast.mpi import MPI, use_mpi
 
 import os
+import sys
 
 import healpy as hp
 import numpy as np
@@ -624,19 +625,28 @@ class OpMappraiser(Operator):
                         self._mappraiser_signal = self._cache.create(
                         "signal", mappraiser.SIGNAL_TYPE, (nsamp * ndet,)
                         )
+                        local_blocks_sizes = self._cache.create(
+                        "block_sizes", mappraiser.PIXEL_TYPE, (len(self._data.obs) * ndet,)
+                        )
                     else:
                         #! separate maps
-                         self._mappraiser_signal = self._cache.create(
+                        self._mappraiser_signal = self._cache.create(
                         "signal", mappraiser.SIGNAL_TYPE, (nsamp * int(ndet/2),)
+                        )
+                        local_blocks_sizes = self._cache.create(
+                        "block_sizes", mappraiser.PIXEL_TYPE, (len(self._data.obs) * int(ndet/2),)
                         )                   
                 else:
                     self._mappraiser_signal = self._cache.create(
                     "signal", mappraiser.SIGNAL_TYPE, (nsamp * int(ndet/2),)
                     )
+                    local_blocks_sizes = self._cache.create(
+                    "block_sizes", mappraiser.PIXEL_TYPE, (len(self._data.obs) * int(ndet/2),)
+                    ) 
                 self._mappraiser_signal[:] = np.nan
 
                 global_offset = 0
-                local_blocks_sizes = []
+                gshift = 0
                 for iobs, obs in enumerate(self._data.obs):
                     tod = obs["tod"]
                     if not self._pair_diff:
@@ -646,11 +656,13 @@ class OpMappraiser(Operator):
                                 signal = tod.local_signal(det, self._name)
                                 signal_dtype = signal.dtype
                                 offset = global_offset
+                                shift = gshift
                                 local_V_size = len(signal)
                                 dslice = slice(idet * nsamp + offset, idet * nsamp + offset + local_V_size)
                                 self._mappraiser_signal[dslice] = signal
                                 offset += local_V_size
-                                local_blocks_sizes.append(local_V_size)
+                                local_blocks_sizes[idet * len(self._data.obs) + shift] = local_V_size
+                                shift += 1
                             else:
                                 #! separate maps
                                 if (idet%2) == 0 and self._params["ignore_dets"] == "even":
@@ -661,12 +673,13 @@ class OpMappraiser(Operator):
                                     signal = tod.local_signal(det, self._name)
                                     signal_dtype = signal.dtype
                                     offset = global_offset
+                                    shift = gshift
                                     local_V_size = len(signal)
                                     dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + local_V_size)
                                     self._mappraiser_signal[dslice] = signal
                                     offset += local_V_size
-                                    local_blocks_sizes.append(local_V_size)
-
+                                    local_blocks_sizes[int(idet/2) * len(self._data.obs) + shift] = local_V_size
+                                    shift += 1
                             del signal
                         # Purge only after all detectors are staged in case some are aliased
                         # cache.clear() will not fail if the object was already
@@ -676,6 +689,7 @@ class OpMappraiser(Operator):
                                 cachename = "{}_{}".format(self._name, det)
                                 tod.cache.clear(cachename)
                         global_offset = offset
+                        gshift = shift
                     else: # pair-differencing case, assuming local dets come in pairs
                         for idet, det in enumerate(detectors):
                             # Get the signal.
@@ -686,11 +700,13 @@ class OpMappraiser(Operator):
                                 signal_1 = tod.local_signal(det, self._name)
                                 signal_dtype = signal_1.dtype
                                 offset = global_offset
+                                shift = gshift
                                 local_V_size = len(signal_0)
                                 dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + local_V_size)
                                 self._mappraiser_signal[dslice] = 0.5*(signal_0 - signal_1)
                                 offset += local_V_size
-                                local_blocks_sizes.append(local_V_size)
+                                local_blocks_sizes[int(idet/2) * len(self._data.obs) + shift] = local_V_size
+                                shift += 1
                                 del signal_0
                                 del signal_1
                         # Purge only after all detectors are staged in case some are aliased
@@ -701,8 +717,8 @@ class OpMappraiser(Operator):
                                 cachename = "{}_{}".format(self._name, det)
                                 tod.cache.clear(cachename)
                         global_offset = offset
+                        gshift = shift
 
-                local_blocks_sizes = np.array(local_blocks_sizes, dtype=np.int32)
             if self._verbose and nread > 1:
                 nodecomm.Barrier()
                 if self._rank == 0:
@@ -733,26 +749,36 @@ class OpMappraiser(Operator):
                         self._mappraiser_noise = self._cache.create(
                         "noise", mappraiser.SIGNAL_TYPE, (nsamp * ndet,)
                         )
+                        self._mappraiser_invtt = self._cache.create(
+                        "invtt", mappraiser.INVTT_TYPE, (self._params["Lambda"] * len(self._data.obs) * ndet,)
+                        )
                     else:
                         #! separate maps
                         self._mappraiser_noise = self._cache.create(
                         "noise", mappraiser.SIGNAL_TYPE, (nsamp * int(ndet/2),)
+                        )
+                        self._mappraiser_invtt = self._cache.create(
+                        "invtt", mappraiser.INVTT_TYPE, (self._params["Lambda"] * len(self._data.obs) * int(ndet/2),)
                         )                       
                 else:
                     self._mappraiser_noise = self._cache.create(
                     "noise", mappraiser.SIGNAL_TYPE, (nsamp * int(ndet/2),)
                     )
+                    self._mappraiser_invtt = self._cache.create(
+                    "invtt", mappraiser.INVTT_TYPE, (self._params["Lambda"] * len(self._data.obs) * int(ndet/2),)
+                    )
                 if self._noise_name == None:
                     self._mappraiser_noise = np.zeros_like(self._mappraiser_noise)
-                    invtt_list = []
-                    for i in range(len(self._data.obs)*len(detectors)):
-                        invtt_list.append(np.ones(1)) #Must be used with lambda = 1
-                    return invtt_list, self._mappraiser_noise.dtype
+                    if self._params["Lambda"] != 1:
+                        sys.exit('Noiseless cases should be passed with half bandwidth = 1.')
+                    self._mappraiser_invtt = np.ones_like(self._mappraiser_invtt) #Must be used with lambda = 1
+                    return self._mappraiser_noise.dtype
 
                 self._mappraiser_noise[:] = np.nan
 
                 global_offset = 0
-                invtt_list = []
+                global_woffset = 0
+                wsamp = self._params["Lambda"] * len(self._data.obs)
                 rms_list = []
                 
                 # params for comparison of ML and PD maps
@@ -775,11 +801,12 @@ class OpMappraiser(Operator):
                                 noise = tod.local_signal(det, self._noise_name)
                                 noise_dtype = noise.dtype
                                 offset = global_offset
+                                woffset = global_woffset
                                 nn = len(noise)
 
                                 if white_noise:
                                     if seed is not None:
-                                        rng = np.random.default_rng(seed * 2**iobs * 3**idet)
+                                        rng = np.random.default_rng(seed * 2**iobs * 3**idet * 5**self._rank)
                                     else:
                                         rng = np.random.default_rng()
                                     wnoise = rng.normal(scale=rms_even, size=nn)
@@ -793,11 +820,13 @@ class OpMappraiser(Operator):
                                 invtt = self._noise2invtt(wnoise, nn, idet)
                                                             
                                 rms_list.append(np.std(wnoise))
-                                invtt_list.append(invtt)
                                 
                                 dslice = slice(idet * nsamp + offset, idet * nsamp + offset + nn)
+                                wslice = slice(idet * wsamp + woffset, idet * wsamp + woffset + self._params["Lambda"])
                                 self._mappraiser_noise[dslice] = wnoise
+                                self._mappraiser_invtt[wslice] = invtt
                                 offset += nn
+                                woffset += self._params["Lambda"]
                             else:
                                 #! separate maps
                                 if (idet%2) == 0 and self._params["ignore_dets"] == "even":
@@ -808,11 +837,12 @@ class OpMappraiser(Operator):
                                     noise = tod.local_signal(det, self._noise_name)
                                     noise_dtype = noise.dtype
                                     offset = global_offset
+                                    woffset = global_woffset
                                     nn = len(noise)
 
                                     if white_noise:
                                         if seed is not None:
-                                            rng = np.random.default_rng(seed * 2**iobs * 3**idet)
+                                            rng = np.random.default_rng(seed * 2**iobs * 3**idet * 5**self._rank)
                                         else:
                                             rng = np.random.default_rng()
                                         wnoise = rng.normal(scale=rms_even, size=nn)
@@ -826,11 +856,13 @@ class OpMappraiser(Operator):
                                     invtt = self._noise2invtt(wnoise, nn, idet)
                                                                 
                                     rms_list.append(np.std(wnoise))
-                                    invtt_list.append(invtt)
                                     
                                     dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + nn)
+                                    wslice = slice(int(idet/2) * wsamp + woffset, int(idet/2) * wsamp + woffset + self._params["Lambda"])
                                     self._mappraiser_noise[dslice] = wnoise
+                                    self._mappraiser_invtt[wslice] = invtt
                                     offset += nn
+                                    woffset += self._params["Lambda"]
                             del noise
                             del wnoise
                         # Purge only after all detectors are staged in case some are aliased
@@ -841,6 +873,7 @@ class OpMappraiser(Operator):
                                 cachename = "{}_{}".format(self._noise_name, det)
                                 tod.cache.clear(cachename)
                         global_offset = offset
+                        global_woffset = woffset
                     else: # pair-differencing case, assuming local dets come in pairs
                         for idet, det in enumerate(detectors):
                             # Get the signal.
@@ -849,7 +882,7 @@ class OpMappraiser(Operator):
                                 nn = len(noise_0)
                                 if white_noise:
                                     if seed is not None:
-                                        rng = np.random.default_rng(seed * 2**iobs * 3**idet)
+                                        rng = np.random.default_rng(seed * 2**iobs * 3**idet * 5**self._rank)
                                     else:
                                         rng = np.random.default_rng()
                                     wnoise_0 = rng.normal(scale=rms_even, size=nn)
@@ -860,11 +893,12 @@ class OpMappraiser(Operator):
                                 noise_1 = tod.local_signal(det, self._noise_name)
                                 noise_dtype = noise_1.dtype
                                 offset = global_offset
+                                woffset = global_woffset
                                 nn = len(noise_0)
                                 
                                 if white_noise:
                                     if seed is not None:
-                                        rng = np.random.default_rng(seed * 2**iobs * 3**idet)
+                                        rng = np.random.default_rng(seed * 2**iobs * 3**idet * 5**self._rank)
                                     else:
                                         rng = np.random.default_rng()
                                     wnoise_1 = rng.normal(scale=rms_even, size=nn)
@@ -876,11 +910,13 @@ class OpMappraiser(Operator):
                                 invtt = self._noise2invtt(0.5*(wnoise_0-wnoise_1), nn, int(idet/2))
                                 
                                 rms_list.append(np.std(0.5*(wnoise_0-wnoise_1)))
-                                invtt_list.append(invtt)
                                 
                                 dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + nn)
+                                wslice = slice(int(idet/2) * wsamp + woffset, int(idet/2) * wsamp + woffset + self._params["Lambda"])
                                 self._mappraiser_noise[dslice] = 0.5*(wnoise_0-wnoise_1)
+                                self._mappraiser_invtt[wslice] = invtt
                                 offset += nn
+                                woffset += self._params["Lambda"]
                                 del noise_0
                                 del noise_1
                                 del wnoise_0
@@ -893,6 +929,7 @@ class OpMappraiser(Operator):
                                 cachename = "{}_{}".format(self._noise_name, det)
                                 tod.cache.clear(cachename)
                         global_offset = offset
+                        global_woffset = woffset
             if self._verbose and nread > 1:
                 nodecomm.Barrier()
                 if self._rank == 0:
@@ -901,7 +938,7 @@ class OpMappraiser(Operator):
         sendcounts = np.array(self._comm.gather(len(rms_list), 0))
         
         Rms_list = None
-        Invtt_list = None
+        #Invtt_list = None
         # Fknee_list = None
         # Fmin_list = None
         # Alpha_list = None
@@ -909,14 +946,14 @@ class OpMappraiser(Operator):
         
         if self._rank == 0:
             Rms_list = np.empty(sum(sendcounts))
-            Invtt_list = np.empty(sum(sendcounts))
+            #Invtt_list = np.empty(sum(sendcounts))
             # Fknee_list = np.empty(sum(sendcounts))
             # Fmin_list = np.empty(sum(sendcounts))
             # Alpha_list = np.empty(sum(sendcounts))
             # Logsigma2_list = np.empty(sum(sendcounts))
 
         self._comm.Gatherv(np.array(rms_list), (Rms_list, sendcounts), 0)
-        self._comm.Gatherv(np.ravel(np.array(invtt_list)), (Invtt_list, sendcounts), 0)
+        #self._comm.Gatherv(np.ravel(np.array(invtt_list)), (Invtt_list, sendcounts), 0)
         # self._comm.Gatherv(np.array(fknee_list),(Fknee_list,sendcounts),0)
         # self._comm.Gatherv(np.array(fmin_list),(Fmin_list, sendcounts),0)
         # self._comm.Gatherv(np.array(alpha_list),(Alpha_list, sendcounts),0)
@@ -927,13 +964,13 @@ class OpMappraiser(Operator):
 
         if self._rank == 0:
             np.save(outpath+"/Rms_list.npy", Rms_list)
-            np.save(outpath+"/Invtt_list.npy", Invtt_list)
+        #    np.save(outpath+"/Invtt_list.npy", Invtt_list)
         #     np.save("fknee.npy",Fknee_list)
         #     np.save("fmin.npy", Fmin_list)
         #     np.save("logsigma2.npy",Logsigma2_list)
         #     np.save("alpha.npy",Alpha_list)
 
-        return invtt_list, noise_dtype
+        return noise_dtype
 
     @function_timer
     def _stage_pixels(self, detectors, nsamp, ndet, nnz, nside):
@@ -1339,16 +1376,13 @@ class OpMappraiser(Operator):
 
         # Stage noise.  If noise is not being purged, staging is not stepped
         timer.start()
-        invtt_list, noise_dtype = self._stage_noise(
+        noise_dtype = self._stage_noise(
            detectors, nsamp, ndet, nodecomm, nread
         )
-        
-        self._mappraiser_invtt = np.array([np.array(invtt_i, dtype= mappraiser.INVTT_TYPE) for invtt_i in invtt_list])
-        del invtt_list
-        self._mappraiser_invtt = np.concatenate(self._mappraiser_invtt)
         if self._params["uniform_w"] == 1:
+            if self._params["lambda"] != 1:
+                sys.exit('Cannot uniform weight when half bandwidth is not 1.')
             self._mappraiser_invtt = np.ones_like(self._mappraiser_invtt)
-        self._mappraiser_invtt /= self._mappraiser_invtt[0] # Scale invtt to avoid potential round-offs
         if self._verbose:
             nodecomm.Barrier()
             if self._rank == 0:

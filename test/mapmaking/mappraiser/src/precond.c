@@ -21,24 +21,6 @@
 
 #define eps 1.0e-15
 
-struct Precond {
-  int precond; // 0 = BJ, 1 = 2lvl a priori, 2 = 2lvl a posteriori
-  int n;
-  int Zn;
-  Mat BJ_inv;
-  Mat BJ;
-  double *pixpond;
-
-  /* 2 lvl only (NULL otherwise) */
-  double **Z;
-  double **AZ;
-  double *Em1; // size Zn*Zn
-  double *Qg; // size n
-  double *AQg; // size n
-  double *Qtx; // size Zn
-  double *w; // size Zn
-};
-
 //do the local Atdiag(Nm1)A with as output a block-diagonal matrix (stored as a vector) in the pixel domain
 int getlocalW(Mat *A, Tpltz Nm1, double *vpixBlock, int *lhits)
 {
@@ -508,7 +490,7 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
   free(hits_proc);
 
   //communicate with the other processes to have the global reduce
-  //TODO : This should be done in a more efficient way
+  //TODO : This should be done in a more readable way
   for(i=0;i<n*(A->nnz);i+=(A->nnz)*(A->nnz)){
     for(j=0;j<(A->nnz);j++){
       vpixBlock_loc[(i/(A->nnz))+j] = vpixBlock[i+j];
@@ -554,7 +536,6 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
         x[k+A->nnz*j] = block[j*A->nnz+k];
       }
     }
-    free(hits_proc);
 
     //Compute the reciprocal of the condition number of the block
 
@@ -579,13 +560,8 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
                block[0*3+1] * (block[1*3 +0] * block[2*3+2] - block[1*3+2] * block[2*3+0]) +
                block[0*3+2] * (block[1*3+0] * block[2*3+1] - block[1*3+1] * block[2*3+0]);
     }
-    commScheme(A, vpixBlock_loc, 2);
-    for (i = 0; i < n * (A->nnz); i += (A->nnz) * (A->nnz))
-    {
-        for (j = 0; j < (A->nnz); j++)
-        {
-            vpixBlock[i + j] = vpixBlock_loc[(i / (A->nnz)) + j];
-        }
+    else if(A->nnz == 2){
+      det = block[0]*block[1*2+1]-block[0*2+1]*block[1*2+0];
     }
 
     if(rcond > 1e-1){
@@ -594,21 +570,21 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
       //Compute the inverse coeffs
       //TODO: This should take into account the fact that the blocks are symmetric
       if(A->nnz == 3){
-        vpixBlock[i] = (block[1*3+1] * block[2*3+2] - block[2*3+1] * block[1*3+2]) * invdet;
-        vpixBlock[i+1] = (block[0*3+2] * block[2*3+1] - block[0*3+1] * block[2*3+2]) * invdet;
-        vpixBlock[i+2] = (block[0*3+1] * block[1*3+2] - block[0*3+2] * block[1*3+1]) * invdet;
-        vpixBlock[i+3] = (block[1*3+2] * block[2*3+0] - block[1*3+0] * block[2*3+2]) * invdet;
-        vpixBlock[i+4] = (block[0*3+0] * block[2*3+2] - block[0*3+2] * block[2*3+0]) * invdet;
-        vpixBlock[i+5] = (block[1*3+0] * block[0*3+2] - block[0*3+0] * block[1*3+2]) * invdet;
-        vpixBlock[i+6] = (block[1*3+0] * block[2*3+1] - block[2*3+0] * block[1*3+1]) * invdet;
-        vpixBlock[i+7] = (block[2*3+0] * block[0*3+1] - block[0*3+0] * block[2*3+1]) * invdet;
-        vpixBlock[i+8] = (block[0*3+0] * block[1*3+1] - block[1*3+0] * block[0*3+1]) * invdet;
+        vpixBlock_inv[i] = (block[1*3+1] * block[2*3+2] - block[2*3+1] * block[1*3+2]) * invdet;
+        vpixBlock_inv[i+1] = (block[0*3+2] * block[2*3+1] - block[0*3+1] * block[2*3+2]) * invdet;
+        vpixBlock_inv[i+2] = (block[0*3+1] * block[1*3+2] - block[0*3+2] * block[1*3+1]) * invdet;
+        vpixBlock_inv[i+3] = (block[1*3+2] * block[2*3+0] - block[1*3+0] * block[2*3+2]) * invdet;
+        vpixBlock_inv[i+4] = (block[0*3+0] * block[2*3+2] - block[0*3+2] * block[2*3+0]) * invdet;
+        vpixBlock_inv[i+5] = (block[1*3+0] * block[0*3+2] - block[0*3+0] * block[1*3+2]) * invdet;
+        vpixBlock_inv[i+6] = (block[1*3+0] * block[2*3+1] - block[2*3+0] * block[1*3+1]) * invdet;
+        vpixBlock_inv[i+7] = (block[2*3+0] * block[0*3+1] - block[0*3+0] * block[2*3+1]) * invdet;
+        vpixBlock_inv[i+8] = (block[0*3+0] * block[1*3+1] - block[1*3+0] * block[0*3+1]) * invdet;
       }
       else if(A->nnz == 2){
-        vpixBlock[i] = block[1*2+1] * invdet;
-        vpixBlock[i+1] = -block[0*2+1] * invdet;
-        vpixBlock[i+2] = -block[1*2+0] * invdet;
-        vpixBlock[i+3] = block[0] * invdet;
+        vpixBlock_inv[i] = block[1*2+1] * invdet;
+        vpixBlock_inv[i+1] = -block[0*2+1] * invdet;
+        vpixBlock_inv[i+2] = -block[1*2+0] * invdet;
+        vpixBlock_inv[i+3] = block[0] * invdet;
       }
     }
     else{// Remove the degenerate pixels from the map-making
@@ -636,6 +612,7 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
       }
 
       // Remove degenerate pixel from vpixBlock, lhits, and cond
+      fflush(stdout);
       memmove(vpixBlock+i, vpixBlock+i+(A->nnz)*(A->nnz),(n*(A->nnz)-(A->nnz)*(A->nnz)-i)*sizeof(double));
       memmove(lhits+(int)i/((A->nnz)*(A->nnz)), lhits+(int)i/((A->nnz)*(A->nnz))+1, ((int)n/(A->nnz)-1-(int)i/((A->nnz)*(A->nnz)))*sizeof(int));
       memmove(cond+(int)i/((A->nnz)*(A->nnz)), cond+(int)i/((A->nnz)*(A->nnz))+1, ((int)n/(A->nnz)-1-(int)i/((A->nnz)*(A->nnz)))*sizeof(double));
@@ -688,13 +665,13 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
     }
   }
 
-  //Init Block-Jacobi inv preconditioner
+  //Init Block-Jacobi preconditioner (PtWP)^-1
   MatSetIndices(BJ_inv, n, A->nnz, indices_new);
   MatSetValues(BJ_inv, n, A->nnz, vpixBlock_inv);
   BJ_inv->trash_pix = 0;
   MatLocalShape(BJ_inv,3);
 
-  //Init Block-Jacobi preconditioner
+  //Init Block-Jacobi inverted preconditioner (PtWP)
   MatSetIndices(BJ, n, A->nnz, indices_new);
   MatSetValues(BJ, n, A->nnz, vpixBlock);
   BJ->trash_pix = 0;
@@ -1360,6 +1337,7 @@ void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat
   MPI_Comm_size(A->comm, &size);
 
   if (rank == 0) printf("Last compiled on %s at %s\n", __DATE__, __TIME__);
+  fflush(stdout);
 
   p->precond = precond;
   p->Zn = Zn;
