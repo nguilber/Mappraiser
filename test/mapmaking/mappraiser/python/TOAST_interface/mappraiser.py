@@ -866,6 +866,7 @@ class OpMappraiser(Operator):
                                     woffset += self._params["Lambda"]
                             del noise
                             del wnoise
+                            del invtt
                         # Purge only after all detectors are staged in case some are aliased
                         # cache.clear() will not fail if the object was already
                         # deleted as an alias
@@ -923,6 +924,7 @@ class OpMappraiser(Operator):
                                 del noise_1
                                 del wnoise_0
                                 del wnoise_1
+                                del invtt
                         # Purge only after all detectors are staged in case some are aliased
                         # cache.clear() will not fail if the object was already
                         # deleted as an alias

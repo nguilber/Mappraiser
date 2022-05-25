@@ -160,11 +160,6 @@ def setup_mappraiser(args):
     params["wnoise_seed"] = args.wnoise_seed
     params["ignore_dets"] = args.ignore_dets
 
-    params["epsilon_frac"] = args.epsilon_frac
-    params["white_noise"] = args.white_noise
-    params["wnoise_seed"] = args.wnoise_seed
-    params["ignore_dets"] = args.ignore_dets
-
     return params
 
 @function_timer

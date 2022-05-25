@@ -21,7 +21,7 @@
 #include "midapack.h"
 #include "mappraiser.h"
 
-int apply_weights(Tpltz Nm1, double* tod, int rank);
+int apply_weights(Tpltz Nm1, double* tod);
 
 int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl, Mat **BJ)
 {
@@ -255,7 +255,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 }
 
 /* Weights TOD data according to the adopted noise model*/
-int apply_weights(Tpltz Nm1, double* tod, int rank){
+int apply_weights(Tpltz Nm1, double* tod){
     int t_id; //time sample index in local data
     int i,j;
     
