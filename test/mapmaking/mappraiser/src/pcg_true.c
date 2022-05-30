@@ -86,7 +86,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     for (i = 0; i < m; i++)
         _g[i] = b[i] + noise[i] - _g[i];
 
-    apply_weights(Nm1,_g, rank);  // _g = Nm1 (d-Ax0)  (d = signal + noise)
+    apply_weights(Nm1, _g);  // _g = Nm1 (d-Ax0)  (d = signal + noise)
 
     TrMatVecProd(A, _g, g, 0); // g = At _g
 
@@ -152,7 +152,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
         MatVecProd(A, h, Ah, 0);            // Ah = A h
         
-        apply_weights(Nm1, Nm1Ah, rank);          // Nm1Ah = Nm1 Ah   (Nm1Ah == Ah)
+        apply_weights(Nm1, Nm1Ah);          // Nm1Ah = Nm1 Ah   (Nm1Ah == Ah)
         
         TrMatVecProd(A, Nm1Ah, AtNm1Ah, 0); // AtNm1Ah = At Nm1Ah
 
