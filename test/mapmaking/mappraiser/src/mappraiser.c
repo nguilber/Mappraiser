@@ -222,7 +222,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
 
   if(solver == 0){
 
-    // normb = PCG_GLS_rand(outpath, ref, &B, Nm1, x_B, copy_signal, noise, cond_B, lhits_B, tol, maxiter, precond, Z_2lvl, nbsamples, sampleIdx);
+    normb = PCG_GLS_rand(outpath, ref, &B, Nm1, x_B, copy_signal, noise, cond_B, lhits_B, tol, maxiter, precond, Z_2lvl, nbsamples, sampleIdx);
     int mapsizeB = B.lcount-(B.nnz)*(B.trash_pix);
 
     // char filename[256];
@@ -255,11 +255,11 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
     int precond2 = 0;
     PCG_GLS_true(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, precond2, Z_2lvl, x_B, mapsizeB, B.lindices, B.trash_pix, nbsamples, sampleIdx, Neighbours, InterpWeights, normb);
 
-    if (rank == 0) {
-      for(int i=A.nnz; i< (A.m-1)*A.nnz; i+=A.nnz){
-        printf("Scan nb %i, Neighbour 1 : %i, Neighbour 2 : %i\n", A.indices[i]/A.nnz, A.indices[i-A.nnz]/A.nnz, A.indices[i+A.nnz]/A.nnz);
-      }
-    }
+    // if (rank == 0) {
+    //   for(int i=A.nnz; i< (A.m-1)*A.nnz; i+=A.nnz){
+    //     printf("Scan nb %i, Neighbour 1 : %i, Neighbour 2 : %i\n", A.indices[i]/A.nnz, A.indices[i-A.nnz]/A.nnz, A.indices[i+A.nnz]/A.nnz);
+    //   }
+    // }
     if (A.lcount != B.lcount) {
       printf("************ %i Trash pixels different for A and B on rank %i\n",(A.lcount - B.lcount)/3, rank);
     }

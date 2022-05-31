@@ -727,7 +727,7 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
       i -= (A->nnz)*(A->nnz);
     }
     uncut_pixel_index += (A->nnz)*(A->nnz);
-    old2new[ipixel] = A->lindices[ipixel*(A->nnz)]/(A->nnz);
+    // old2new[ipixel] = A->lindices[ipixel*(A->nnz)]/(A->nnz);
   }
   // free memory
 
@@ -1970,19 +1970,19 @@ void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat
     printf("Out of memory: map reallocation failed");
     exit(1);
   }
-  if (rank == 0) printf("COUCOU   ************* 111111" );
-
-  int mapsizeA = A->lcount-(A->nnz)*(A->trash_pix);
-  for(i=0; i< n_init; i++){
-    int globidx1 = old2new[i+(A->nnz)*old_trashpix];
-    for (int j = 0; j < mapsizeA; j++) {
-      int globidx2 = A->lindices[j+(A->nnz)*(A->trash_pix)];
-      if (globidx1 == globidx2) {
-        x[j] = x_init[i];
-      }
-    }
-  }
-  if (rank == 0) printf("COUCOU   ************* 22222222" );
+  // if (rank == 0) printf("COUCOU   ************* 111111" );
+  //
+  // int mapsizeA = A->lcount-(A->nnz)*(A->trash_pix);
+  // for(i=0; i< n_init; i++){
+  //   int globidx1 = old2new[i+(A->nnz)*old_trashpix];
+  //   for (int j = 0; j < mapsizeA; j++) {
+  //     int globidx2 = A->lindices[j+(A->nnz)*(A->trash_pix)];
+  //     if (globidx1 == globidx2) {
+  //       x[j] = x_init[i];
+  //     }
+  //   }
+  // }
+  // if (rank == 0) printf("COUCOU   ************* 22222222" );
 
   p->pixpond = (double *)malloc(p->n * sizeof(double));
 

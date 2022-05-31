@@ -60,7 +60,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     int *oldlindices = (int *) malloc(old_npix * sizeof(int)); // old num to new num
 
     build_precond(&p, &pixpond, &n, A, &Nm1, &x, b, noise, cond, lhits, tol, Z_2lvl, precond, nbsamples, sampleIdx, x_init, n_init, old_lindices, old_trashpix);
-    int mapsizeA = (A->lcount-(A->nnz)*(A->trash_pix))/(A->nnz);
+    // int mapsizeA = (A->lcount-(A->nnz)*(A->trash_pix))/(A->nnz);
     // int *old2new     = (int *) malloc(mapsizeA * sizeof(int)); // old num to new num
     // for (int i = 0; i < old_npix; i++) {
     //   for (int j = 0; j < mapsizeA; j++) {
@@ -74,16 +74,16 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     //   }
     // }
     // Update_Initial_Guess(x_init, n_init, x, Neighbours, old_lindices, old_npix, old_trashpix, A, old2new, InterpWeights);
-    // int mapsizeA = A->lcount-(A->nnz)*(A->trash_pix);
-    // for(i=0; i< n_init; i++){
-    //   int globidx1 = old_lindices[i+(A->nnz)*old_trashpix];
-    //   for (int j = 0; j < mapsizeA; j++) {
-    //     int globidx2 = A->lindices[j+(A->nnz)*(A->trash_pix)];
-    //     if (globidx1 == globidx2) {
-    //       x[j] = x_init[i];
-    //     }
-    //   }
-    // }
+    int mapsizeA = A->lcount-(A->nnz)*(A->trash_pix);
+    for(i=0; i< n_init; i++){
+      int globidx1 = old_lindices[i+(A->nnz)*old_trashpix];
+      for (int j = 0; j < mapsizeA; j++) {
+        int globidx2 = A->lindices[j+(A->nnz)*(A->trash_pix)];
+        if (globidx1 == globidx2) {
+          x[j] = x_init[i];
+        }
+      }
+    }
 
 
 
