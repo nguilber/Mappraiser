@@ -109,23 +109,48 @@ def add_mappraiser_args(parser):
         pass
 
     parser.add_argument(
-        "--epsilon_frac", required=False, default=None, type=np.double,
-        help="Fractional noise difference"
+        "--epsilon-frac-mean",
+        dest="epsilon_frac_mean",
+        required=False,
+        default=None,
+        type=np.double,
+        help="Mean fractional noise difference in detector pairs"
+    )
+    
+    parser.add_argument(
+        "--epsilon-frac-sd",
+        dest="epsilon_frac_sd",
+        required=False,
+        default=None,
+        type=np.double,
+        help="Std deviation of fractional noise difference in detector pairs (if 0, all pairs will take the value given by --epsilon-frac-mean"
     )
 
     parser.add_argument(
-        "--white_noise", required=False, default=False, type=np.bool_,
+        "--white-noise",
+        dest="white_noise",
+        required=False,
+        default=False,
+        type=np.bool_,
         help="Generate simple white noise"
     )
 
     parser.add_argument(
-        "--wnoise_seed", required=False, default=None, type=np.int,
+        "--wnoise-seed",
+        dest="wnoise_seed",
+        required=False,
+        default=None,
+        type=np.int,
         help="Specify seed for white noise generation (for reproducible results)"
     )
     
     parser.add_argument(
-        "--ignore_dets", required=False, default=None, type=str,
-        help="Ignore pixels to make separate maps from even and odd detectors in ML mapmaking. Possible values = (None, 'even,'odd')"
+        "--ignore-dets",
+        dest="ignore_dets",
+        required=False,
+        default=None,
+        type=np.uint8,
+        help="Ignore detectors to make half maps. 0->take all dets. 1->ignore odd dets. 2->ignore even dets"
     )
 
     return
@@ -155,7 +180,8 @@ def setup_mappraiser(args):
     params["ortho_alg"] = args.ortho_alg
     params["bs_red"] = args.bs_red
     
-    params["epsilon_frac"] = args.epsilon_frac
+    params["epsilon_frac_mean"] = args.epsilon_frac_mean
+    params["epsilon_frac_sd"] = args.epsilon_frac_sd
     params["white_noise"] = args.white_noise
     params["wnoise_seed"] = args.wnoise_seed
     params["ignore_dets"] = args.ignore_dets

@@ -25,6 +25,7 @@ from scipy import interpolate
 from scipy.optimize import curve_fit
 import scipy.signal
 import math
+from scipy.stats import truncnorm
 
 
 mappraiser = None
@@ -70,6 +71,10 @@ def inverselogpsd_model(f,a,alpha,f0,fmin):
 
 def white_psd(f,sigma2):
     return sigma2*np.ones_like(f)
+
+def get_truncated_normal(mean=0.0, sd=1.0, low=0.0, upp=10.0):
+    return truncnorm(
+        (low - mean) / sd, (upp - mean) / sd, loc=mean, scale=sd)
 
 class OpMappraiser(Operator):
     """
@@ -276,7 +281,7 @@ class OpMappraiser(Operator):
             nb_blocks_loc = int(nb_blocks_loc/2)
         else:
             nnz_bis = nnz
-            if self._params["ignore_dets"] is not None:
+            if self._params["ignore_dets"]:
                 nb_blocks_loc = int(nb_blocks_loc/2)
         # Compute the Maximum Likelihood map
         # os.environ["OMP_NUM_THREADS"] = "1"
@@ -401,18 +406,21 @@ class OpMappraiser(Operator):
         # distinguish case of white noise (no need to fit PSD in this case)
         if self._params["white_noise"]:
             
-            assert rms_even is not None and rms_factor is not None
+            assert rms_even is not None # and rms_factor is not None
             
-            f = rms_factor ** 2
             sigma2 = rms_even ** 2
-
-            if not self._pair_diff:
-                if (idet % 2) == 0:
-                    pass
-                if (idet % 2) == 1:
-                    sigma2 *= f
+            
+            if rms_factor is None:
+                pass
             else:
-                sigma2 *= (1 + f) / 4
+                f = rms_factor ** 2
+                if not self._pair_diff:
+                    if (idet % 2) == 0:
+                        pass
+                    if (idet % 2) == 1:
+                        sigma2 *= f
+                else:
+                    sigma2 *= (1 + f) / 4
             
             inv_tt = np.array([1 / sigma2])
             return inv_tt
@@ -622,7 +630,7 @@ class OpMappraiser(Operator):
             timer.start()
             if nodecomm.rank % nread == iread:
                 if not self._pair_diff:
-                    if self._params["ignore_dets"] is None:
+                    if not self._params["ignore_dets"]:
                         self._mappraiser_signal = self._cache.create(
                         "signal", mappraiser.SIGNAL_TYPE, (nsamp * ndet,)
                         )
@@ -630,7 +638,7 @@ class OpMappraiser(Operator):
                         "block_sizes", mappraiser.PIXEL_TYPE, (len(self._data.obs) * ndet,)
                         )
                     else:
-                        #! separate maps
+                        # half-maps
                         self._mappraiser_signal = self._cache.create(
                         "signal", mappraiser.SIGNAL_TYPE, (nsamp * int(ndet/2),)
                         )
@@ -652,7 +660,7 @@ class OpMappraiser(Operator):
                     tod = obs["tod"]
                     if not self._pair_diff:
                         for idet, det in enumerate(detectors):
-                            if self._params["ignore_dets"] is None:
+                            if not self._params["ignore_dets"]:
                                 # Get the signal.
                                 signal = tod.local_signal(det, self._name)
                                 signal_dtype = signal.dtype
@@ -665,10 +673,10 @@ class OpMappraiser(Operator):
                                 local_blocks_sizes[idet * len(self._data.obs) + shift] = local_V_size
                                 shift += 1
                             else:
-                                #! separate maps
-                                if (idet%2) == 0 and self._params["ignore_dets"] == "even":
+                                # half-maps
+                                if (idet%2) == 0 and self._params["ignore_dets"] == 2:
                                     continue
-                                elif (idet%2) == 1 and self._params["ignore_dets"] == "odd":
+                                elif (idet%2) == 1 and self._params["ignore_dets"] == 1:
                                     continue
                                 else:
                                     signal = tod.local_signal(det, self._name)
@@ -746,7 +754,7 @@ class OpMappraiser(Operator):
             
             if nodecomm.rank % nread == iread:
                 if not self._pair_diff:
-                    if self._params["ignore_dets"] is None:
+                    if not self._params["ignore_dets"]:
                         self._mappraiser_noise = self._cache.create(
                         "noise", mappraiser.SIGNAL_TYPE, (nsamp * ndet,)
                         )
@@ -754,7 +762,7 @@ class OpMappraiser(Operator):
                         "invtt", mappraiser.INVTT_TYPE, (self._params["Lambda"] * len(self._data.obs) * ndet,)
                         )
                     else:
-                        #! separate maps
+                        # half-maps
                         self._mappraiser_noise = self._cache.create(
                         "noise", mappraiser.SIGNAL_TYPE, (nsamp * int(ndet/2),)
                         )
@@ -780,24 +788,38 @@ class OpMappraiser(Operator):
                 global_offset = 0
                 global_woffset = 0
                 wsamp = self._params["Lambda"] * len(self._data.obs)
+                
+                # comparison of ML and PD mapmakers
+                
+                white_noise = self._params["white_noise"]
+                seed = self._params["wnoise_seed"]
+                rms_even = 10**(-3.5)
                 rms_list = []
                 
-                # params for comparison of ML and PD maps
-                white_noise = self._params["white_noise"]
-                epsilon = self._params["epsilon_frac"]
-                seed = self._params["wnoise_seed"]
-                rms_factor_odd = 1.0 if epsilon is None else np.sqrt((2-epsilon)/(2+epsilon))
-                rms_even = 10**(-3.5)
+                epsilon_mean = self._params["epsilon_frac_mean"]
+                epsilon_sd = self._params["epsilon_frac_sd"]
+                if epsilon_mean is not None:
+                    assert (epsilon_mean <= 2.0 and epsilon_mean >= -2.0)
+                    if epsilon_sd > 0.0:
+                        rv = get_truncated_normal(mean=epsilon_mean, sd=epsilon_sd,
+                                                          low=-2.0, upp=2.0)
+                        epsilons = rv.rvs(int(ndet/2))
+                        epsilon_scatter = True
+                    else:
+                        epsilons = [epsilon_mean]
+                        epsilon_scatter = False
+                        
                 # fknee_list = []
                 # fmin_list = []
                 # alpha_list = []
                 # logsigma2_list = []                
+                
                 for iobs, obs in enumerate(self._data.obs):
                     tod = obs["tod"]
 
                     if not self._pair_diff:
                         for idet, det in enumerate(detectors):
-                            if self._params["ignore_dets"] is None:
+                            if not self._params["ignore_dets"]:
                                 # Get the signal.
                                 noise = tod.local_signal(det, self._noise_name)
                                 noise_dtype = noise.dtype
@@ -816,9 +838,18 @@ class OpMappraiser(Operator):
 
                                 if (idet % 2) == 1:
                                     # change noise rms of odd-index detectors
+                                    if epsilon_mean is not None:
+                                        if epsilon_scatter:
+                                            e = epsilons[int(idet/2)]
+                                        else:
+                                            e = epsilon_mean
+                                        rms_factor_odd = math.sqrt((2-e)/(2+e))
+                                    else:
+                                        rms_factor_odd = 1.0
                                     wnoise *= rms_factor_odd
-                                
-                                invtt = self._noise2invtt(wnoise, nn, idet, rms_even, rms_factor_odd)
+                                    invtt = self._noise2invtt(wnoise, nn, idet, rms_even, rms_factor_odd)
+                                else:
+                                    invtt = self._noise2invtt(wnoise, nn, idet, rms_even)
                                                             
                                 rms_list.append(np.std(wnoise))
                                 
@@ -829,10 +860,10 @@ class OpMappraiser(Operator):
                                 offset += nn
                                 woffset += self._params["Lambda"]
                             else:
-                                #! separate maps
-                                if (idet%2) == 0 and self._params["ignore_dets"] == "even":
+                                # half-maps
+                                if (idet%2) == 0 and self._params["ignore_dets"] == 2:
                                     continue
-                                elif (idet%2) == 1 and self._params["ignore_dets"] == "odd":
+                                elif (idet%2) == 1 and self._params["ignore_dets"] == 1:
                                     continue
                                 else:
                                     noise = tod.local_signal(det, self._noise_name)
@@ -852,9 +883,18 @@ class OpMappraiser(Operator):
 
                                     if (idet % 2) == 1:
                                         # change noise rms of odd-index detectors
+                                        if epsilon_mean is not None:
+                                            if epsilon_scatter:
+                                                e = epsilons[int(idet/2)]
+                                            else:
+                                                e = epsilon_mean
+                                            rms_factor_odd = math.sqrt((2-e)/(2+e))
+                                        else:
+                                            rms_factor_odd = 1.0
                                         wnoise *= rms_factor_odd
-                                    
-                                    invtt = self._noise2invtt(wnoise, nn, idet, rms_even, rms_factor_odd)
+                                        invtt = self._noise2invtt(wnoise, nn, idet, rms_even, rms_factor_odd)
+                                    else:
+                                        invtt = self._noise2invtt(wnoise, nn, idet, rms_even)
                                                                 
                                     rms_list.append(np.std(wnoise))
                                     
@@ -907,6 +947,15 @@ class OpMappraiser(Operator):
                                 else:
                                     wnoise_1 = noise_1
                                 
+                                if epsilon_mean is not None:
+                                    if epsilon_scatter:
+                                        e = epsilons[int(idet/2)]
+                                    else:
+                                        e = epsilon_mean
+                                    rms_factor_odd = math.sqrt((2-e)/(2+e))
+                                else:
+                                    rms_factor_odd = 1.0
+                                
                                 wnoise_1 *= rms_factor_odd
                                                                     
                                 invtt = self._noise2invtt(0.5*(wnoise_0-wnoise_1), nn, int(idet/2), rms_even,
@@ -942,7 +991,7 @@ class OpMappraiser(Operator):
         sendcounts = np.array(self._comm.gather(len(rms_list), 0))
         
         Rms_list = None
-        #Invtt_list = None
+        # Invtt_list = None
         # Fknee_list = None
         # Fmin_list = None
         # Alpha_list = None
@@ -950,14 +999,14 @@ class OpMappraiser(Operator):
         
         if self._rank == 0:
             Rms_list = np.empty(sum(sendcounts))
-            #Invtt_list = np.empty(sum(sendcounts))
+            # Invtt_list = np.empty(sum(sendcounts))
             # Fknee_list = np.empty(sum(sendcounts))
             # Fmin_list = np.empty(sum(sendcounts))
             # Alpha_list = np.empty(sum(sendcounts))
             # Logsigma2_list = np.empty(sum(sendcounts))
 
         self._comm.Gatherv(np.array(rms_list), (Rms_list, sendcounts), 0)
-        #self._comm.Gatherv(np.ravel(np.array(invtt_list)), (Invtt_list, sendcounts), 0)
+        # self._comm.Gatherv(np.ravel(np.array(invtt_list)), (Invtt_list, sendcounts), 0)
         # self._comm.Gatherv(np.array(fknee_list),(Fknee_list,sendcounts),0)
         # self._comm.Gatherv(np.array(fmin_list),(Fmin_list, sendcounts),0)
         # self._comm.Gatherv(np.array(alpha_list),(Alpha_list, sendcounts),0)
@@ -968,11 +1017,11 @@ class OpMappraiser(Operator):
 
         if self._rank == 0:
             np.save(outpath+"/Rms_list.npy", Rms_list)
-        #    np.save(outpath+"/Invtt_list.npy", Invtt_list)
-        #     np.save("fknee.npy",Fknee_list)
-        #     np.save("fmin.npy", Fmin_list)
-        #     np.save("logsigma2.npy",Logsigma2_list)
-        #     np.save("alpha.npy",Alpha_list)
+            # np.save(outpath+"/Invtt_list.npy", Invtt_list)
+            # np.save("fknee.npy",Fknee_list)
+            # np.save("fmin.npy", Fmin_list)
+            # np.save("logsigma2.npy",Logsigma2_list)
+            # np.save("alpha.npy",Alpha_list)
 
         return noise_dtype
 
@@ -981,12 +1030,12 @@ class OpMappraiser(Operator):
         """ Stage pixels
         """
         if not self._pair_diff:
-            if self._params["ignore_dets"] is None:
+            if not self._params["ignore_dets"]:
                 self._mappraiser_pixels = self._cache.create(
                     "pixels", mappraiser.PIXEL_TYPE, (nsamp * ndet * nnz,)
                 )
             else:
-                #! separate maps
+                # half-maps
                 self._mappraiser_pixels = self._cache.create(
                     "pixels", mappraiser.PIXEL_TYPE, (nsamp * int(ndet/2) * nnz,)
                 )
@@ -1003,7 +1052,7 @@ class OpMappraiser(Operator):
             commonflags = None
             if not self._pair_diff:
                 for idet, det in enumerate(detectors):
-                    if self._params["ignore_dets"] is None:
+                    if not self._params["ignore_dets"]:
                         # Optionally get the flags, otherwise they are
                         # assumed to have been applied to the pixel numbers.
                         # N.B: MAPPRAISER doesn't use flags for now but might be useful for
@@ -1047,7 +1096,7 @@ class OpMappraiser(Operator):
                         self._mappraiser_pixels[dslice][2::nnz] += 2
                         offset += nn
                     else:
-                        #! separate maps
+                        # half-maps
                         if self._apply_flags:
                             detflags = tod.local_flags(det, self._flag_name)
                             commonflags = tod.local_common_flags(self._common_flag_name)
@@ -1057,9 +1106,9 @@ class OpMappraiser(Operator):
                             )
                             del detflags
 
-                        if (idet%2) == 0 and self._params["ignore_dets"] == "even":
+                        if (idet%2) == 0 and self._params["ignore_dets"] == 2:
                             continue
-                        elif (idet%2) == 1 and self._params["ignore_dets"] == "odd":
+                        elif (idet%2) == 1 and self._params["ignore_dets"] == 1:
                             continue
                         else:
                             pixelsname = "{}_{}".format(self._pixels, det)
@@ -1206,12 +1255,12 @@ class OpMappraiser(Operator):
             timer.start()
             if nodecomm.rank % nread == iread:
                 if not self._pair_diff:
-                    if self._params["ignore_dets"] is None:
+                    if not self._params["ignore_dets"]:
                         self._mappraiser_pixweights = self._cache.create(
                         "pixweights", mappraiser.WEIGHT_TYPE, (nsamp * ndet * nnz,)
                         )
                     else:
-                        #! separate maps
+                        # half-maps
                         self._mappraiser_pixweights = self._cache.create(
                         "pixweights", mappraiser.WEIGHT_TYPE, (nsamp * int(ndet/2) * nnz,)
                         )
@@ -1226,7 +1275,7 @@ class OpMappraiser(Operator):
                     tod = obs["tod"]
                     if not self._pair_diff:
                         for idet, det in enumerate(detectors):
-                            if self._params["ignore_dets"] is None:
+                            if not self._params["ignore_dets"]:
                                 # get the pixels and weights for the valid intervals
                                 # from the cache
                                 weightsname = "{}_{}".format(self._weights, det)
@@ -1243,10 +1292,10 @@ class OpMappraiser(Operator):
                                 ]
                                 offset += nn
                             else:
-                                #! separate maps
-                                if (idet%2) == 0 and self._params["ignore_dets"] == "even":
+                                # half-maps
+                                if (idet%2) == 0 and self._params["ignore_dets"] == 2:
                                     continue
-                                elif (idet%2) == 1 and self._params["ignore_dets"] == "odd":
+                                elif (idet%2) == 1 and self._params["ignore_dets"] == 1:
                                     continue
                                 else:
                                     weightsname = "{}_{}".format(self._weights, det)
