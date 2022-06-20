@@ -801,10 +801,24 @@ class OpMappraiser(Operator):
                 if epsilon_mean is not None:
                     assert (epsilon_mean <= 2.0 and epsilon_mean >= -2.0)
                     if epsilon_sd > 0.0:
-                        rv = get_truncated_normal(mean=epsilon_mean, sd=epsilon_sd,
-                                                          low=-2.0, upp=2.0)
-                        epsilons = rv.rvs(int(ndet/2))
                         epsilon_scatter = True
+                                             
+                        # proc 0 will generate the random distribution
+                        if self._rank == 0:
+                            rv = get_truncated_normal(mean=epsilon_mean, sd=epsilon_sd,
+                                                            low=-2.0, upp=2.0)
+                            epsilons = rv.rvs(int(ndet/2))
+                            
+                            # save epsilon values for reference
+                            outpath = self._params["output"]
+                            np.save(outpath+"/epsilons.npy", epsilons)
+                        else:
+                            epsilons = None
+                        
+                        epsilons = self._comm.bcast(epsilons, root=0)
+                        
+                        # print("[proc {}] epsilons = {}".format(self._rank, epsilons), flush=True)
+                        
                     else:
                         epsilons = [epsilon_mean]
                         epsilon_scatter = False
