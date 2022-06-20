@@ -54,6 +54,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     m = A->m;
 
     st = MPI_Wtime();
+    Z_2lvl = 150;
 
     if (Z_2lvl == 0) Z_2lvl = size;
     int old_npix = A->lcount/A->nnz;
@@ -329,6 +330,7 @@ double PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, doub
     // }
     if (Z_2lvl == 0) Z_2lvl = size;
     build_precond4rand(&p, &pixpond, &n, A, &Nm1, &x, b, noise, cond, lhits, tol, Z_2lvl, precond, nbsamples, sampleIdx);
+    // build_precond(&p, &pixpond, &n, A, &Nm1, &x, b, noise, cond, lhits, tol, Z_2lvl, precond, nbsamples, sampleIdx, x_init, n_init, old_lindices, old_trashpix);
 
 
     fflush(stdout);
@@ -354,13 +356,13 @@ double PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, doub
     st = MPI_Wtime();
 
     // Compute RHS
-    // MatVecProd(A, x, _g, 0);
-    MatVecProdwGaps(A, x, _g, 0, sampleIdx, nbsamples);
+    MatVecProd(A, x, _g, 0);
+    // MatVecProdwGaps(A, x, _g, 0, sampleIdx, nbsamples);
 
     // for (i = 0; i < m; i++) // To Change with Sequenced Data
     //     _g[i] = b[i] + noise[i] - _g[i];
 
-    for (int ispl = 0; ispl < nbsamples; ispl++) // To Change with Sequenced Data
+    for (int ispl = 0; ispl < Nm1.nb_blocks_loc; ispl++) // To Change with Sequenced Data
     {
       int begblk = A->shift[sampleIdx[ispl]  ];
       int endblk = A->shift[sampleIdx[ispl]+1];
@@ -371,8 +373,8 @@ double PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, doub
 
     // stbmmProd(Nm1, _g); // _g = Nm1 (Ax-b)
     stbmmProdwGaps(Nm1, _g, nbsamples, sampleIdx); // _g = Nm1 (Ax-b)
-    // TrMatVecProd(A, _g, g, 0); // g = At _g
-    TrMatVecProdwGaps(A, _g, g, 0, sampleIdx, nbsamples); // g = At _g
+    TrMatVecProd(A, _g, g, 0); // g = At _g
+    // TrMatVecProdwGaps(A, _g, g, 0, sampleIdx, nbsamples); // g = At _g
 
     apply_precond(p, A, &Nm1, g, Cg);
 
@@ -435,12 +437,12 @@ double PCG_GLS_rand(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, doub
         gp = g;
         g = gt;
 
-        // MatVecProd(A, h, Ah, 0);                            // Ah = A h
-        MatVecProdwGaps(A, h, Ah, 0, sampleIdx, nbsamples); // Ah = A h
+        MatVecProd(A, h, Ah, 0);                            // Ah = A h
+        // MatVecProdwGaps(A, h, Ah, 0, sampleIdx, nbsamples); // Ah = A h
         // stbmmProd(Nm1, Nm1Ah);                              // Nm1Ah = Nm1 Ah   (Nm1Ah == Ah)
         stbmmProdwGaps(Nm1, Nm1Ah, nbsamples, sampleIdx);                              // Nm1Ah = Nm1 Ah   (Nm1Ah == Ah)
-        // TrMatVecProd(A, Nm1Ah, AtNm1Ah, 0);                 // AtNm1Ah = At Nm1Ah
-        TrMatVecProdwGaps(A, Nm1Ah, AtNm1Ah, 0, sampleIdx, nbsamples);                 // AtNm1Ah = At Nm1Ah
+        TrMatVecProd(A, Nm1Ah, AtNm1Ah, 0);                 // AtNm1Ah = At Nm1Ah
+        // TrMatVecProdwGaps(A, Nm1Ah, AtNm1Ah, 0, sampleIdx, nbsamples);                 // AtNm1Ah = At Nm1Ah
 
         coeff = 0.0;
         localreduce = 0.0;

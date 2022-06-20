@@ -172,6 +172,7 @@ int prepare_Rand_GLS(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *b, dou
 
   if (rank == 0) {
     printf("******* prepare_Rand_GLS *******\n");
+    fflush(stdout);
   }
 
   int nbsamples = 0;
@@ -202,6 +203,11 @@ int prepare_Rand_GLS(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *b, dou
     }
     TplzBlocknormsLoc[iblk] = sqrt(TplzBlocknormsLoc[iblk]*Nm1.tpltzblocks[iblk].n);
   }
+
+  // if (rank == 0) {
+  //   printf("******* CheckPoint 1 *******\n");
+  //   fflush(stdout);
+  // }
   // if (rank == 0) {
   //   for (int i = 0; i < Nm1.tpltzblocks[2].lambda; i++) {
   //     printf("-- %e", (Nm1.tpltzblocks[2].T_block)[i]);
@@ -212,38 +218,53 @@ int prepare_Rand_GLS(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *b, dou
   int displacements[size+1];
   displacements[0] = 0;
   MPI_Allgather( &Nm1.nb_blocks_loc, 1, MPI_INT, vec_nb_blocks, 1, MPI_INT, MPI_COMM_WORLD);
-  for (int i = 0; i < size; i++) {
-    displacements[i+1] = displacements[i] + vec_nb_blocks[i];
-    if (rank == i) {
-      for (int j = 0; j < Nm1.nb_blocks_loc; j++) {
-        sampleIdx[j] = displacements[i] + j;
-      }
-    }
-    for (int j = 0; j < Nm1.nb_blocks_loc; j++) {
-      GlobsampleIdx[displacements[i] + j] = displacements[i] + j;
-    }
-  }
-  MPI_Allgatherv(TplzBlocknormsLoc, Nm1.nb_blocks_loc, MPI_DOUBLE, TplzBlocknorms, vec_nb_blocks, displacements, MPI_DOUBLE, MPI_COMM_WORLD);
-  double stddev = 0.0, expmean = 0.0;
-  for (int i = 0; i < Nm1.nb_blocks_tot; i++) {
-    expmean += TplzBlocknormsLoc[i];
-  }
-  expmean = expmean/Nm1.nb_blocks_tot;
-  for (int i = 0; i < Nm1.nb_blocks_tot; i++) {
-    stddev += (TplzBlocknormsLoc[i]-expmean)*(TplzBlocknormsLoc[i]-expmean);
-  }
-  stddev = sqrt(stddev/Nm1.nb_blocks_tot);
-
-  if (rank == 0) {
-    char filename[256];
-    sprintf(filename,"%s/Tplzblknormfile_%s.dat", outpath, ref);
-    fp = fopen(filename,"w");
-    for (int iblk = 0; iblk < Nm1.nb_blocks_tot; iblk++) {
-      double normw = TplzBlocknorms[iblk];
-      fwrite(&normw, sizeof(double), 1, fp);
-    }
-    fflush(stdout);
-  }
+  // if (rank == 0) {
+  //   printf("******* CheckPoint 2 *******\n");
+  //   fflush(stdout);
+  // }
+  // for (int i = 0; i < size; i++) {
+  //   displacements[i+1] = displacements[i] + vec_nb_blocks[i];
+  //   if (rank == i) {
+  //     for (int j = 0; j < Nm1.nb_blocks_loc; j++) {
+  //       sampleIdx[j] = displacements[i] + j;
+  //     }
+  //   }
+  //   for (int j = 0; j < Nm1.nb_blocks_loc; j++) {
+  //     GlobsampleIdx[displacements[i] + j] = displacements[i] + j;
+  //   }
+  // }
+  // if (rank == 0) {
+  //   printf("******* CheckPoint 3 *******\n");
+  //   fflush(stdout);
+  // }
+  // MPI_Allgatherv(TplzBlocknormsLoc, Nm1.nb_blocks_loc, MPI_DOUBLE, TplzBlocknorms, vec_nb_blocks, displacements, MPI_DOUBLE, MPI_COMM_WORLD);
+  // double stddev = 0.0, expmean = 0.0;
+  // for (int i = 0; i < Nm1.nb_blocks_tot; i++) {
+  //   expmean += TplzBlocknormsLoc[i];
+  // }
+  // if (rank == 0) {
+  //   printf("******* CheckPoint 4 *******\n");
+  //   fflush(stdout);
+  // }
+  // expmean = expmean/Nm1.nb_blocks_tot;
+  // for (int i = 0; i < Nm1.nb_blocks_tot; i++) {
+  //   stddev += (TplzBlocknormsLoc[i]-expmean)*(TplzBlocknormsLoc[i]-expmean);
+  // }
+  // stddev = sqrt(stddev/Nm1.nb_blocks_tot);
+  // if (rank == 0) {
+  //   printf("******* CheckPoint 5 *******\n");
+  //   fflush(stdout);
+  // }
+  // if (rank == 0) {
+  //   char filename[256];
+  //   sprintf(filename,"%s/Tplzblknormfile_%s.dat", outpath, ref);
+  //   fp = fopen(filename,"w");
+  //   for (int iblk = 0; iblk < Nm1.nb_blocks_tot; iblk++) {
+  //     double normw = TplzBlocknorms[iblk];
+  //     fwrite(&normw, sizeof(double), 1, fp);
+  //   }
+  //   fflush(stdout);
+  // }
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++AAAAAAAAAAAAAAAAAAAAA
   //          Selection of the blocks according to their norm
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++AAAAAAAAAAAAAAAAAAAAA
@@ -296,7 +317,7 @@ int prepare_Rand_GLS(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *b, dou
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++AAAAAAAAAAAAAAAAAAAAA
   //          Random selection of the blocks
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++AAAAAAAAAAAAAAAAAAAAA
-  nbsamples = (Nm1.nb_blocks_loc)*80/100;
+  nbsamples = (Nm1.nb_blocks_loc)*50/100;
   for (int iblk = 0; iblk < Nm1.nb_blocks_loc; iblk++) {
     sampleIdx[iblk] = iblk;
   }
@@ -306,7 +327,10 @@ int prepare_Rand_GLS(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *b, dou
     sampleIdx[iblk] = sampleIdx[randidx];
     sampleIdx[randidx] = idxsave;
   }
-
+  // if (rank == 0) {
+  //   printf("******* CheckPoint 6 *******\n");
+  //   fflush(stdout);
+  // }
 
   return nbsamples;
 }

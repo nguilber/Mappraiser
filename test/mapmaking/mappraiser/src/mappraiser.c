@@ -193,14 +193,16 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   tpltzblocks = (Block *) malloc(nb_blocks_loc * sizeof(Block));
   defineBlocks_avg(tpltzblocks, invtt, nb_blocks_loc, local_blocks_sizes, lambda_block_avg, id0 );
   defineTpltz_avg( &Nm1, nrow, 1, mcol, tpltzblocks, nb_blocks_loc, nb_blocks_tot, id0, local_V_size, flag_stgy, comm);
+  if (rank==0) {
+    printf("[rank %d] Noise model: Banded block Toeplitz, half bandwidth = %d \n", rank, lambda_block_avg);
+    printf("[rank %d] %s  %s \n", rank, outpath, ref);
+    fflush(stdout);
+  }
 
   int nbsamples;
   int* sampleIdx = (int*) malloc( sizeof(int)* nb_blocks_loc);
   //print Toeplitz parameters for information
   nbsamples = prepare_Rand_GLS(outpath, ref, &A, Nm1, signal, noise, cond, sampleIdx);
-  if (rank==0) {
-    printf("[rank %d] Noise model: Banded block Toeplitz, half bandwidth = %d \n", rank, lambda_block_avg);
-  }
 
   MPI_Barrier(comm);
   if(rank==0){
@@ -260,9 +262,9 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
     //     printf("Scan nb %i, Neighbour 1 : %i, Neighbour 2 : %i\n", A.indices[i]/A.nnz, A.indices[i-A.nnz]/A.nnz, A.indices[i+A.nnz]/A.nnz);
     //   }
     // }
-    if (A.lcount != B.lcount) {
-      printf("************ %i Trash pixels different for A and B on rank %i\n",(A.lcount - B.lcount)/3, rank);
-    }
+    // if (A.lcount != B.lcount) {
+    //   printf("************ %i Trash pixels different for A and B on rank %i\n",(A.lcount - B.lcount)/3, rank);
+    // }
     // printf("************ %i Trash pixels on rank %i\n", A.lcount/3, rank);
 
   }

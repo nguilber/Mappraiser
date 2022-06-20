@@ -506,8 +506,22 @@ if (nb_blocks_rank == 1) {
 //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
   }//end of if(nnew[id]>0)
   }//end of loop over the blocks
+  for(int isample=nbsamples;isample<nb_blocks_rank;isample++) {
+    iblock = sampleIdx[isample] + idv0;
+    id = iblock%nb_blocks_local;  //index of current block
+    idv2 = (tpltzblocks[id].idv)-(idpnew)%nrow+vShft + nrow*( (iblock/nb_blocks_local) );
 
-
+    if(nnew[id]>0) { //the block is ok
+      if(iblock!=idv0 && iblock!=idv0+nb_blocks_rank-1) {
+        for (j=0;j<m_rowwise;j++) {
+      #pragma omp parallel for //num_threads(NB_OMPTHREADS_STBMM)
+          for (i=0;i<vblock_size;i++) {
+            (*V)[idv2+i+j*n_rowwise] = tpltzblocks[id].T_block[0]*(*V)[idv2+i+j*n_rowwise];
+          }
+        }
+      }
+    }
+  }
   free(LambdaIn);
 
 
