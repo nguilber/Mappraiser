@@ -27,6 +27,8 @@ import scipy.signal
 import math
 from scipy.stats import truncnorm
 
+import pylab as pl
+
 
 mappraiser = None
 if use_mpi:
@@ -57,17 +59,17 @@ def count_caches(data, comm, nodecomm, mappraisercache, msg=""):
         )
     return
 
-def psd_model(f,sigma,alpha,f0,fmin):
-    return sigma * (1+((f+fmin)/f0)**alpha)
+def psd_model(f,sigma,alpha,f_knee,fmin):
+    return sigma * (1+((f+fmin)/f_knee)**alpha)
 
-def logpsd_model(f,a,alpha,f0,fmin):
-    return a + np.log10(1+((f+fmin)/f0)**alpha)
+def logpsd_model(f,a,alpha,f_knee,fmin):
+    return a + np.log10(1+((f+fmin)/f_knee)**alpha)
 
-def inversepsd_model(f,sigma,alpha,f0,fmin):
-    return sigma * 1./(1+((f+fmin)/f0)**alpha)
+def inversepsd_model(f,sigma,alpha,f_knee,fmin):
+    return sigma * 1./(1+((f+fmin)/f_knee)**alpha)
 
-def inverselogpsd_model(f,a,alpha,f0,fmin):
-    return a - np.log10(1+((f+fmin)/f0)**alpha)
+def inverselogpsd_model(f,a,alpha,f_knee,fmin):
+    return a - np.log10(1+((f+fmin)/f_knee)**alpha)
 
 def white_psd(f,sigma2):
     return sigma2*np.ones_like(f)
@@ -438,8 +440,7 @@ class OpMappraiser(Operator):
             f, psd = scipy.signal.periodogram(noise, sampling_freq,nfft=block_size,window='blackman')
             # if idet==37:
             #     print(len(f), flush=True)
-
-
+            
             # Fit the psd model to the periodogram (in log scale)
             popt,pcov = curve_fit(logpsd_model,f[1:],np.log10(psd[1:]),p0=np.array([-7, -1.0, 0.1, 0.]), bounds=([-20, -10, 0., 0.], [0., 0., 10, 0.001]), maxfev = 1000)        # popt[1] = -5.
             # popt[2] = 2.
@@ -484,12 +485,13 @@ class OpMappraiser(Operator):
 
             inv_tt_w = np.multiply(symw, inv_tt, dtype = mappraiser.INVTT_TYPE)
 
-            #effective inverse noise power
-            # if self._rank == 0 and idet == 0:
-            #     psd = np.abs(np.fft.fft(inv_tt_w,n=block_size))
-            #     np.save("freq.npy",fs[:int(block_size/2)])
-            #     np.save("psd0.npy",psdm1[:int(block_size/2)])
-            #     np.save("psd"+str(self._params["Lambda"])+".npy",psd[:int(block_size/2)])
+            # effective inverse noise power
+            if self._rank == 0 and idet == 0:
+                psd = np.abs(np.fft.fft(inv_tt_w,n=block_size))
+                output = self._params["output"]
+                np.save(output+"/freq.npy",fs[:int(block_size/2)])
+                np.save(output+"/psd0.npy",psdm1[:int(block_size/2)])
+                np.save(output+"/psd"+str(self._params["Lambda"])+".npy",psd[:int(block_size/2)])
 
             return inv_tt_w[:self._params["Lambda"]] #, popt[0], popt[1], popt[2], popt[3]
 
@@ -807,7 +809,7 @@ class OpMappraiser(Operator):
                         if self._rank == 0:
                             rv = get_truncated_normal(mean=epsilon_mean, sd=epsilon_sd,
                                                             low=-2.0, upp=2.0)
-                            epsilons = rv.rvs(int(ndet/2))
+                            epsilons = rv.rvs(int(ndet/2), random_state=self._params['epsilon_seed'])
                             
                             # save epsilon values for reference
                             outpath = self._params["output"]

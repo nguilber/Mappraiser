@@ -125,6 +125,15 @@ def add_mappraiser_args(parser):
         type=np.double,
         help="Std deviation of fractional noise difference in detector pairs (if 0, all pairs will take the value given by --epsilon-frac-mean"
     )
+    
+    parser.add_argument(
+        "--epsilon-seed",
+        dest="epsilon_seed",
+        required=False,
+        default=None,
+        type=np.int,
+        help="Specify seed for distribution of epsilon values in detector pairs"
+    )
 
     parser.add_argument(
         "--white-noise",
@@ -182,6 +191,7 @@ def setup_mappraiser(args):
     
     params["epsilon_frac_mean"] = args.epsilon_frac_mean
     params["epsilon_frac_sd"] = args.epsilon_frac_sd
+    params["epsilon_seed"] = args.epsilon_seed
     params["white_noise"] = args.white_noise
     params["wnoise_seed"] = args.wnoise_seed
     params["ignore_dets"] = args.ignore_dets
