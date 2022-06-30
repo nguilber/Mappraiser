@@ -405,8 +405,8 @@ class OpMappraiser(Operator):
         """ Computes a periodogram from a noise timestream, and fits a PSD model
         to it, which is then used to build the first row of a Toeplitz block.
         """
-        # distinguish case of white noise (no need to fit PSD in this case)
-        if self._params["white_noise"]:
+        # distinguish case of only white noise (no need to fit PSD in this case)
+        if self._params["white_noise_only"]:
             
             assert rms_even is not None # and rms_factor is not None
             
@@ -425,6 +425,22 @@ class OpMappraiser(Operator):
                     sigma2 *= (1 + f) / 4
             
             inv_tt = np.array([1 / sigma2])
+            
+            # DEBUG begin
+            # sampling_freq = self._params["samplerate"]
+            # Max_lambda = 2**(int(math.log(nn/4,2))) # closest power of two to 1/4 of the timestream length
+            # f_defl = sampling_freq/(np.pi*Max_lambda)
+            # df = f_defl/2
+            # block_size = 2**(int(math.log(sampling_freq*1./df,2)))
+            
+            # f, psd = scipy.signal.periodogram(noise, sampling_freq,nfft=block_size,window='blackman')
+            
+            # psd_sim_m1 = np.reciprocal(psd)
+            # if self._rank == 0 and idet < 10:
+            #     output = self._params["output"]
+            #     np.save(output+f"/psd_sim_{idet}.npy", psd_sim_m1)
+            # DEBUG end
+            
             return inv_tt
 
         else:
@@ -451,9 +467,10 @@ class OpMappraiser(Operator):
             # psd_fit_m1[1:] = inversepsd_model(f[1:],10**popt[0],popt[1],popt[2])
 
             # Invert periodogram
-            # psd_sim_m1 = np.reciprocal(psd)
-            # if self._rank == 0 and idet == 0:
-            #     np.save("psd_sim.npy",psd_sim_m1)
+            psd_sim_m1 = np.reciprocal(psd)
+            if self._rank == 0 and idet < 10:
+                output = self._params["output"]
+                np.save(output+f"/psd_sim_{idet}.npy", psd_sim_m1)
             # psd_sim_m1_log = np.log10(psd_sim_m1)
 
             # Invert the fit to the psd model / Fit the inverse psd model to the inverted periodogram
@@ -494,6 +511,15 @@ class OpMappraiser(Operator):
                 np.save(output+"/psd"+str(self._params["Lambda"])+".npy",psd[:int(block_size/2)])
 
             return inv_tt_w[:self._params["Lambda"]] #, popt[0], popt[1], popt[2], popt[3]
+
+
+    def _gen_white_noise(size, seed, iobs, idet, rank, scale):
+        if seed is not None:
+            rng = np.random.default_rng(seed * 2**iobs * 3**idet * 5**rank)
+        else:
+            rng = np.random.default_rng()
+        return rng.normal(scale=scale, size=size)
+        
 
     @function_timer
     def _prepare(self):
@@ -794,6 +820,7 @@ class OpMappraiser(Operator):
                 # comparison of ML and PD mapmakers
                 
                 white_noise = self._params["white_noise"]
+                white_noise_only = self._params["white_noise_only"]
                 seed = self._params["wnoise_seed"]
                 rms_even = 10**(-3.5)
                 rms_list = []
@@ -808,7 +835,7 @@ class OpMappraiser(Operator):
                         # proc 0 will generate the random distribution
                         if self._rank == 0:
                             rv = get_truncated_normal(mean=epsilon_mean, sd=epsilon_sd,
-                                                            low=-2.0, upp=2.0)
+                                                            low=-1.2, upp=1.2)
                             epsilons = rv.rvs(int(ndet/2), random_state=self._params['epsilon_seed'])
                             
                             # save epsilon values for reference
@@ -835,22 +862,26 @@ class OpMappraiser(Operator):
 
                     if not self._pair_diff:
                         for idet, det in enumerate(detectors):
-                            if not self._params["ignore_dets"]:
-                                # Get the signal.
-                                noise = tod.local_signal(det, self._noise_name)
-                                noise_dtype = noise.dtype
+                            # half-maps
+                            if (idet%2) == 0 and self._params["ignore_dets"] == 2:
+                                continue
+                            elif (idet%2) == 1 and self._params["ignore_dets"] == 1:
+                                continue
+                            else:
+                                # Get the signal
+                                toast_noise = tod.local_signal(det, self._noise_name)
+                                noise_dtype = toast_noise.dtype
                                 offset = global_offset
                                 woffset = global_woffset
-                                nn = len(noise)
-
-                                if white_noise:
-                                    if seed is not None:
-                                        rng = np.random.default_rng(seed * 2**iobs * 3**idet * 5**self._rank)
-                                    else:
-                                        rng = np.random.default_rng()
-                                    wnoise = rng.normal(scale=rms_even, size=nn)
+                                nn = len(toast_noise)
+                                
+                                if white_noise_only:
+                                    final_noise = self._gen_white_noise(nn, seed, iobs, idet, self._rank, rms_even)
+                                elif white_noise:
+                                    final_noise = toast_noise + \
+                                        self._gen_white_noise(nn, seed, iobs, idet, self._rank, rms_even)
                                 else:
-                                    wnoise = noise
+                                    final_noise = toast_noise
 
                                 if (idet % 2) == 1:
                                     # change noise rms of odd-index detectors
@@ -862,66 +893,25 @@ class OpMappraiser(Operator):
                                         rms_factor_odd = math.sqrt((2-e)/(2+e))
                                     else:
                                         rms_factor_odd = 1.0
-                                    wnoise *= rms_factor_odd
-                                    invtt = self._noise2invtt(wnoise, nn, idet, rms_even, rms_factor_odd)
+                                    final_noise *= rms_factor_odd
+                                    invtt = self._noise2invtt(final_noise, nn, idet, rms_even, rms_factor_odd)
                                 else:
-                                    invtt = self._noise2invtt(wnoise, nn, idet, rms_even)
+                                    invtt = self._noise2invtt(final_noise, nn, idet, rms_even)
                                                             
-                                rms_list.append(np.std(wnoise))
+                                rms_list.append(np.std(final_noise))
                                 
-                                dslice = slice(idet * nsamp + offset, idet * nsamp + offset + nn)
-                                wslice = slice(idet * wsamp + woffset, idet * wsamp + woffset + self._params["Lambda"])
-                                self._mappraiser_noise[dslice] = wnoise
+                                if not self._params["ignore_dets"]:
+                                    dslice = slice(idet * nsamp + offset, int(idet/2) * nsamp + offset + nn)
+                                    wslice = slice(idet * wsamp + woffset, int(idet/2) * wsamp + woffset + self._params["Lambda"])
+                                else:
+                                    dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + nn)
+                                    wslice = slice(int(idet/2) * wsamp + woffset, int(idet/2) * wsamp + woffset + self._params["Lambda"])
+                                self._mappraiser_noise[dslice] = final_noise
                                 self._mappraiser_invtt[wslice] = invtt
                                 offset += nn
                                 woffset += self._params["Lambda"]
-                            else:
-                                # half-maps
-                                if (idet%2) == 0 and self._params["ignore_dets"] == 2:
-                                    continue
-                                elif (idet%2) == 1 and self._params["ignore_dets"] == 1:
-                                    continue
-                                else:
-                                    noise = tod.local_signal(det, self._noise_name)
-                                    noise_dtype = noise.dtype
-                                    offset = global_offset
-                                    woffset = global_woffset
-                                    nn = len(noise)
-
-                                    if white_noise:
-                                        if seed is not None:
-                                            rng = np.random.default_rng(seed * 2**iobs * 3**idet * 5**self._rank)
-                                        else:
-                                            rng = np.random.default_rng()
-                                        wnoise = rng.normal(scale=rms_even, size=nn)
-                                    else:
-                                        wnoise = noise
-
-                                    if (idet % 2) == 1:
-                                        # change noise rms of odd-index detectors
-                                        if epsilon_mean is not None:
-                                            if epsilon_scatter:
-                                                e = epsilons[int(idet/2)]
-                                            else:
-                                                e = epsilon_mean
-                                            rms_factor_odd = math.sqrt((2-e)/(2+e))
-                                        else:
-                                            rms_factor_odd = 1.0
-                                        wnoise *= rms_factor_odd
-                                        invtt = self._noise2invtt(wnoise, nn, idet, rms_even, rms_factor_odd)
-                                    else:
-                                        invtt = self._noise2invtt(wnoise, nn, idet, rms_even)
-                                                                
-                                    rms_list.append(np.std(wnoise))
-                                    
-                                    dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + nn)
-                                    wslice = slice(int(idet/2) * wsamp + woffset, int(idet/2) * wsamp + woffset + self._params["Lambda"])
-                                    self._mappraiser_noise[dslice] = wnoise
-                                    self._mappraiser_invtt[wslice] = invtt
-                                    offset += nn
-                                    woffset += self._params["Lambda"]
-                            del noise
-                            del wnoise
+                            del toast_noise
+                            del final_noise
                             del invtt
                         # Purge only after all detectors are staged in case some are aliased
                         # cache.clear() will not fail if the object was already
@@ -936,32 +926,29 @@ class OpMappraiser(Operator):
                         for idet, det in enumerate(detectors):
                             # Get the signal.
                             if (idet % 2) == 0:
-                                noise_0 = tod.local_signal(det, self._noise_name)
-                                nn = len(noise_0)
-                                if white_noise:
-                                    if seed is not None:
-                                        rng = np.random.default_rng(seed * 2**iobs * 3**idet * 5**self._rank)
-                                    else:
-                                        rng = np.random.default_rng()
-                                    wnoise_0 = rng.normal(scale=rms_even, size=nn)
+                                toastnoise_0 = tod.local_signal(det, self._noise_name)
+                                noise_dtype = toastnoise_0.dtype
+                                nn = len(toastnoise_0)
+                                if white_noise_only:
+                                    final_noise_0 = self._gen_white_noise(nn, seed, iobs, idet, self._rank, rms_even)
+                                elif white_noise:
+                                    final_noise_0 = toastnoise_0 + \
+                                        self._gen_white_noise(nn, seed, iobs, idet, self._rank, rms_even)
                                 else:
-                                    wnoise_0 = noise_0
-                                noise_dtype = noise_0.dtype
+                                    final_noise_0 = toastnoise_0
                             if (idet % 2) == 1:
-                                noise_1 = tod.local_signal(det, self._noise_name)
-                                noise_dtype = noise_1.dtype
+                                toastnoise_1 = tod.local_signal(det, self._noise_name)
+                                noise_dtype = toastnoise_1.dtype
                                 offset = global_offset
                                 woffset = global_woffset
-                                nn = len(noise_0)
-                                
-                                if white_noise:
-                                    if seed is not None:
-                                        rng = np.random.default_rng(seed * 2**iobs * 3**idet * 5**self._rank)
-                                    else:
-                                        rng = np.random.default_rng()
-                                    wnoise_1 = rng.normal(scale=rms_even, size=nn)
+                                nn = len(toastnoise_1)
+                                if white_noise_only:
+                                    final_noise_1 = self._gen_white_noise(nn, seed, iobs, idet, self._rank, rms_even)
+                                elif white_noise:
+                                    final_noise_1 = toastnoise_1 + \
+                                        self._gen_white_noise(nn, seed, iobs, idet, self._rank, rms_even)
                                 else:
-                                    wnoise_1 = noise_1
+                                    final_noise_1 = toastnoise_1
                                 
                                 if epsilon_mean is not None:
                                     if epsilon_scatter:
@@ -972,23 +959,23 @@ class OpMappraiser(Operator):
                                 else:
                                     rms_factor_odd = 1.0
                                 
-                                wnoise_1 *= rms_factor_odd
+                                final_noise_1 *= rms_factor_odd
                                                                     
-                                invtt = self._noise2invtt(0.5*(wnoise_0-wnoise_1), nn, int(idet/2), rms_even,
+                                invtt = self._noise2invtt(0.5*(final_noise_0-final_noise_1), nn, int(idet/2), rms_even,
                                                           rms_factor_odd)
                                 
-                                rms_list.append(np.std(0.5*(wnoise_0-wnoise_1)))
+                                rms_list.append(np.std(0.5*(final_noise_0-final_noise_1)))
                                 
                                 dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + nn)
                                 wslice = slice(int(idet/2) * wsamp + woffset, int(idet/2) * wsamp + woffset + self._params["Lambda"])
-                                self._mappraiser_noise[dslice] = 0.5*(wnoise_0-wnoise_1)
+                                self._mappraiser_noise[dslice] = 0.5*(final_noise_0-final_noise_1)
                                 self._mappraiser_invtt[wslice] = invtt
                                 offset += nn
                                 woffset += self._params["Lambda"]
-                                del noise_0
-                                del noise_1
-                                del wnoise_0
-                                del wnoise_1
+                                del toastnoise_0
+                                del toastnoise_1
+                                del final_noise_0
+                                del final_noise_1
                                 del invtt
                         # Purge only after all detectors are staged in case some are aliased
                         # cache.clear() will not fail if the object was already

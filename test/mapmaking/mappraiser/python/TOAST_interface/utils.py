@@ -139,10 +139,33 @@ def add_mappraiser_args(parser):
         "--white-noise",
         dest="white_noise",
         required=False,
-        default=False,
-        type=np.bool_,
-        help="Generate simple white noise"
+        action="store_true",
+        help="Generate simple white noise for each detector independently"
     )
+    parser.add_argument(
+        "--no-white-noise",
+        dest="white_noise",
+        required=False,
+        action="store_false",
+        help="Do not generate white noise [default]"
+    )
+    parser.set_defaults(white_noise=False)
+    
+    parser.add_argument(
+        "--white-noise-only",
+        dest="white_noise_only",
+        required=False,
+        action="store_true",
+        help="Only generate white noise"
+    )
+    parser.add_argument(
+        "--no-white-noise-only",
+        dest="white_noise_only",
+        required=False,
+        action="store_false",
+        help="Include TOAST generated noise [default]"
+    )
+    parser.set_defaults(white_noise_only=False)
 
     parser.add_argument(
         "--wnoise-seed",
@@ -193,6 +216,7 @@ def setup_mappraiser(args):
     params["epsilon_frac_sd"] = args.epsilon_frac_sd
     params["epsilon_seed"] = args.epsilon_seed
     params["white_noise"] = args.white_noise
+    params["white_noise_only"] = args.white_noise_only
     params["wnoise_seed"] = args.wnoise_seed
     params["ignore_dets"] = args.ignore_dets
 
