@@ -571,7 +571,7 @@ class OpMappraiser(Operator):
         
         # Get parameters of the common mode from arguments
         try:
-            fmin, fknee, alpha, net = np.array(
+            fknee, fmin, alpha, net = np.array(
                 self._params["my_common_mode"].split(",")
             ).astype(np.float64)
         except ValueError as e:
@@ -596,7 +596,7 @@ class OpMappraiser(Operator):
         )
         
         freq = common_mode_model.freq(detector)
-        psd = common_mode_model.psds(detector)
+        psd = common_mode_model.psd(detector)
         
         # Following code taken from TOAST python code (function sim_noise_timestream in tod_math)
         fftlen = 2
@@ -656,7 +656,7 @@ class OpMappraiser(Operator):
 
         scale = np.sqrt(interp_psd * norm)
 
-        # gaussian Re/Im randoms, packed into a complex valued array
+        # # gaussian Re/Im randoms, packed into a complex valued array
 
         # key1 = realization * 4294967296 + telescope * 65536 + component
         # key2 = obsindx * 4294967296 + detindx
@@ -668,9 +668,8 @@ class OpMappraiser(Operator):
         # ).array()
 
         # Use Numpy's random number generator with input user seed
-        
         rng = np.random.default_rng(self._params["rng_seed"])
-        rngdata = rng.normal(size=(fftlen,2), scale=np.sqrt(2)/2).view(np.complex)
+        rngdata = rng.normal(size=fftlen)
 
         fdata = np.zeros(npsd, dtype=np.complex)
 
@@ -692,6 +691,7 @@ class OpMappraiser(Operator):
 
         DC = np.mean(tdata[offset : offset + samples])
         tdata[offset : offset + samples] -= DC
+        
         return (tdata[offset : offset + samples], interp_freq, interp_psd)
         
 
@@ -1000,7 +1000,8 @@ class OpMappraiser(Operator):
                 
                 # custom implemented common mode
                 if self._params["my_common_mode"] is not None:
-                    common_mode_timestream, _, _ = self._gen_common_mode(nsamp)
+                    assert self._params["rng_seed"] is not None
+                    common_mode_timestream, freq, psd = self._gen_common_mode(nsamp)
                 
                 # fractional differences of noise levels in detector pairs
                 epsilon_mean = self._params["epsilon_frac_mean"]
@@ -1093,8 +1094,8 @@ class OpMappraiser(Operator):
                                 # Define slices
                                 
                                 if not self._params["ignore_dets"]:
-                                    dslice = slice(idet * nsamp + offset, int(idet/2) * nsamp + offset + nn)
-                                    wslice = slice(idet * wsamp + woffset, int(idet/2) * wsamp + woffset + self._params["Lambda"])
+                                    dslice = slice(idet * nsamp + offset, idet * nsamp + offset + nn)
+                                    wslice = slice(idet * wsamp + woffset, idet * wsamp + woffset + self._params["Lambda"])
                                 else:
                                     dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + nn)
                                     wslice = slice(int(idet/2) * wsamp + woffset, int(idet/2) * wsamp + woffset + self._params["Lambda"])

@@ -181,7 +181,7 @@ def add_mappraiser_args(parser):
         required=False,
         default=None,
         type=np.int,
-        help="Specify seed for custom noise generation (white noise and common mode)"
+        help="Specify seed for custom noise generation (white noise and common mode). MUST be specified when using custom common mode noise."
     )
     
     parser.add_argument(
