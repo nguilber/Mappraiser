@@ -152,28 +152,36 @@ def add_mappraiser_args(parser):
     parser.set_defaults(white_noise=False)
     
     parser.add_argument(
-        "--white-noise-only",
-        dest="white_noise_only",
+        "--my-common-mode",
+        dest="my_common_mode",
+        required=False,
+        default=None,
+        help="String defining analytical parameters of a common mode added to all detectors: 'fmin[Hz],fknee[Hz],alpha,NET[K]'. Remove argument if no common mode is to be generated."
+    )
+    
+    parser.add_argument(
+        "--custom-noise-only",
+        dest="custom_noise_only",
         required=False,
         action="store_true",
-        help="Only generate white noise"
+        help="Only generate custom noise (white and/or common mode)"
     )
     parser.add_argument(
-        "--no-white-noise-only",
-        dest="white_noise_only",
+        "--no-custom-noise-only",
+        dest="custom_noise_only",
         required=False,
         action="store_false",
         help="Include TOAST generated noise [default]"
     )
-    parser.set_defaults(white_noise_only=False)
+    parser.set_defaults(custom_noise_only=False)
 
     parser.add_argument(
-        "--wnoise-seed",
-        dest="wnoise_seed",
+        "--rng-seed",
+        dest="rng_seed",
         required=False,
         default=None,
         type=np.int,
-        help="Specify seed for white noise generation (for reproducible results)"
+        help="Specify seed for custom noise generation (white noise and common mode)"
     )
     
     parser.add_argument(
@@ -212,12 +220,16 @@ def setup_mappraiser(args):
     params["ortho_alg"] = args.ortho_alg
     params["bs_red"] = args.bs_red
     
+    # custom noise generation
+    params["white_noise"] = args.white_noise
+    params["my_common_mode"] = args.my_common_mode
+    params["rng_seed"] = args.rng_seed
+    params["custom_noise_only"] = args.custom_noise_only
+    
+    # noise level differences in detector pairs
     params["epsilon_frac_mean"] = args.epsilon_frac_mean
     params["epsilon_frac_sd"] = args.epsilon_frac_sd
     params["epsilon_seed"] = args.epsilon_seed
-    params["white_noise"] = args.white_noise
-    params["white_noise_only"] = args.white_noise_only
-    params["wnoise_seed"] = args.wnoise_seed
     params["ignore_dets"] = args.ignore_dets
 
     return params

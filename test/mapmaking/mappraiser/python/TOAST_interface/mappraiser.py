@@ -19,6 +19,7 @@ from toast.cache import Cache
 from toast.op import Operator
 from toast.timing import function_timer, Timer
 from toast.utils import Logger, memreport
+from toast.tod import AnalyticNoise
 
 from numpy.fft import fft, fftfreq, fftshift
 from scipy import interpolate
@@ -513,12 +514,184 @@ class OpMappraiser(Operator):
             return inv_tt_w[:self._params["Lambda"]] #, popt[0], popt[1], popt[2], popt[3]
 
 
-    def _gen_white_noise(size, seed, iobs, idet, rank, scale):
+    def _gen_white_noise(self, samples, iobs, idet, scale):
+        
+        """ Generate a white (gaussian) noise timestream with given parameters.
+        
+        The set of {seed, iobs, idet, rank} values determines the final seed given to the RNG.
+        This can be used to reproduce the results.
+        
+        Args:
+            samples (int): the length of the timestream.
+            iobs (int): the index of the observation.
+            idet (int): the index of the detector.
+            scale (float): the RMS of the timestream.
+
+        Returns:
+            (array): The generated noise timestream.
+        """
+        
+        seed = self._params["rng_seed"]
+        
         if seed is not None:
-            rng = np.random.default_rng(seed * 2**iobs * 3**idet * 5**rank)
+            rng = np.random.default_rng(seed * 2**iobs * 3**idet * 5**self._rank)
         else:
             rng = np.random.default_rng()
-        return rng.normal(scale=scale, size=size)
+            
+        return rng.normal(scale=scale, size=samples)
+    
+    
+    def _gen_common_mode(self, samples, oversample=2):
+        
+        """ Generate a common mode noise timestream.
+        
+        A random number generator is used to produce unit-variance Gaussian samples.
+        Then, the Fourier domain amplitudes are modified to match the desired PSD.
+        
+        A large part of this function is taken from TOAST's function sim_noise_timestream in module tod_math.
+        
+        Args:
+            samples (int): the number of samples to generate.
+            oversample (int): the factor by which to expand the FFT length beyond the number of samples.
+        
+        Returns:
+            (array, array, array): A tuple of generated timestream, interpolated frequencies, and interpolated PSD.
+            
+        """
+
+        # Create an extra "virtual" detector for the common mode.
+        # There could be several ones (typically 1 per optic tube) but this is not implemented.
+        detector = "common_mode_det"
+        fmins = {}
+        fknees = {}
+        alphas = {}
+        NETs = {}
+        rates = {}
+        
+        # Get parameters of the common mode from arguments
+        try:
+            fmin, fknee, alpha, net = np.array(
+                self._params["my_common_mode"].split(",")
+            ).astype(np.float64)
+        except ValueError as e:
+            print(e, flush=True)
+        
+        rate = self._params["samplerate"]
+        
+        rates[detector] = rate
+        fmins[detector] = fmin
+        fknees[detector] = fknee
+        alphas[detector] = alpha
+        NETs[detector] = net
+
+        # Create a noise model using TOAST's AnalyticNoise class
+        common_mode_model = AnalyticNoise(
+            rate=rates,
+            fmin=fmins,
+            detectors=[detector],
+            fknee=fknees,
+            alpha=alphas,
+            NET=NETs,
+        )
+        
+        freq = common_mode_model.freq(detector)
+        psd = common_mode_model.psds(detector)
+        
+        # Following code taken from TOAST python code (function sim_noise_timestream in tod_math)
+        fftlen = 2
+        while fftlen <= (oversample * samples):
+            fftlen *= 2
+        npsd = fftlen // 2 + 1
+        norm = rate * float(npsd - 1)
+
+        interp_freq = np.fft.rfftfreq(fftlen, 1 / rate)
+        if interp_freq.size != npsd:
+            raise RuntimeError(
+                "interpolated PSD frequencies do not have expected length"
+            )
+
+        # Ensure that the input frequency range includes all the frequencies
+        # we need.  Otherwise the extrapolation is not well defined.
+
+        if np.amin(freq) < 0.0:
+            raise RuntimeError("input PSD frequencies should be >= zero")
+
+        if np.amin(psd) < 0.0:
+            raise RuntimeError("input PSD values should be >= zero")
+
+        increment = rate / fftlen
+
+        if freq[0] > increment:
+            raise RuntimeError(
+                "input PSD does not go to low enough frequency to "
+                "allow for interpolation"
+            )
+
+        nyquist = rate / 2
+        if np.abs((freq[-1] - nyquist) / nyquist) > 0.01:
+            raise RuntimeError(
+                "last frequency element does not match Nyquist "
+                "frequency for given sample rate: {} != {}".format(freq[-1], nyquist)
+            )
+
+        # Perform a logarithmic interpolation.  In order to avoid zero values, we
+        # shift the PSD by a fixed amount in frequency and amplitude.
+
+        psdshift = 0.01 * np.amin(psd[(psd > 0.0)])
+        freqshift = increment
+
+        loginterp_freq = np.log10(interp_freq + freqshift)
+        logfreq = np.log10(freq + freqshift)
+        logpsd = np.log10(psd + psdshift)
+
+        interp = interpolate.interp1d(logfreq, logpsd, kind="linear", fill_value="extrapolate")
+
+        loginterp_psd = interp(loginterp_freq)
+        interp_psd = np.power(10.0, loginterp_psd) - psdshift
+
+        # Zero out DC value
+
+        interp_psd[0] = 0.0
+
+        scale = np.sqrt(interp_psd * norm)
+
+        # gaussian Re/Im randoms, packed into a complex valued array
+
+        # key1 = realization * 4294967296 + telescope * 65536 + component
+        # key2 = obsindx * 4294967296 + detindx
+        # counter1 = 0
+        # counter2 = firstsamp * oversample
+
+        # rngdata = rng.random(
+        #     fftlen, sampler="gaussian", key=(key1, key2), counter=(counter1, counter2)
+        # ).array()
+
+        # Use Numpy's random number generator with input user seed
+        
+        rng = np.random.default_rng(self._params["rng_seed"])
+        rngdata = rng.normal(size=(fftlen,2), scale=np.sqrt(2)/2).view(np.complex)
+
+        fdata = np.zeros(npsd, dtype=np.complex)
+
+        # Set the DC and Nyquist frequency imaginary part to zero
+        fdata[0] = rngdata[0] + 0.0j
+        fdata[-1] = rngdata[npsd - 1] + 0.0j
+
+        # Repack the other values.
+        fdata[1:-1] = rngdata[1 : npsd - 1] + 1j * rngdata[-1 : npsd - 1 : -1]
+
+        # scale by PSD
+        fdata *= scale
+
+        # inverse FFT
+        tdata = np.fft.irfft(fdata)
+
+        # subtract the DC level- for just the samples that we are returning
+        offset = (fftlen - samples) // 2
+
+        DC = np.mean(tdata[offset : offset + samples])
+        tdata[offset : offset + samples] -= DC
+        return (tdata[offset : offset + samples], interp_freq, interp_psd)
         
 
     @function_timer
@@ -818,20 +991,25 @@ class OpMappraiser(Operator):
                 wsamp = self._params["Lambda"] * len(self._data.obs)
                 
                 # comparison of ML and PD mapmakers
-                
                 white_noise = self._params["white_noise"]
-                white_noise_only = self._params["white_noise_only"]
-                seed = self._params["wnoise_seed"]
+                custom_only = self._params["custom_noise_only"]
+                seed = self._params["rng_seed"]
                 rms_even = 10**(-3.5)
                 rms_list = []
                 
+                # custom implemented common mode
+                if self._params["my_common_mode"] is not None:
+                    common_mode_timestream, _, _ = self._gen_common_mode(nsamp)
+                
+                # fractional differences of noise levels in detector pairs
                 epsilon_mean = self._params["epsilon_frac_mean"]
                 epsilon_sd = self._params["epsilon_frac_sd"]
+                
                 if epsilon_mean is not None:
                     assert (epsilon_mean <= 2.0 and epsilon_mean >= -2.0)
+                    
                     if epsilon_sd > 0.0:
-                        epsilon_scatter = True
-                                             
+                        epsilon_scatter = True                         
                         # proc 0 will generate the random distribution
                         if self._rank == 0:
                             rv = get_truncated_normal(mean=epsilon_mean, sd=epsilon_sd,
@@ -845,8 +1023,6 @@ class OpMappraiser(Operator):
                             epsilons = None
                         
                         epsilons = self._comm.bcast(epsilons, root=0)
-                        
-                        # print("[proc {}] epsilons = {}".format(self._rank, epsilons), flush=True)
                         
                     else:
                         epsilons = [epsilon_mean]
@@ -862,29 +1038,42 @@ class OpMappraiser(Operator):
 
                     if not self._pair_diff:
                         for idet, det in enumerate(detectors):
-                            # half-maps
+                            
+                            # Case of half-maps
+                            
                             if (idet%2) == 0 and self._params["ignore_dets"] == 2:
                                 continue
+                            
                             elif (idet%2) == 1 and self._params["ignore_dets"] == 1:
                                 continue
+                            
                             else:
-                                # Get the signal
+                                # Get the signal from TOAST
+                                
                                 toast_noise = tod.local_signal(det, self._noise_name)
                                 noise_dtype = toast_noise.dtype
                                 offset = global_offset
                                 woffset = global_woffset
                                 nn = len(toast_noise)
                                 
-                                if white_noise_only:
-                                    final_noise = self._gen_white_noise(nn, seed, iobs, idet, self._rank, rms_even)
-                                elif white_noise:
-                                    final_noise = toast_noise + \
-                                        self._gen_white_noise(nn, seed, iobs, idet, self._rank, rms_even)
-                                else:
-                                    final_noise = toast_noise
+                                # Create array for final noise that will be staged
+                                
+                                final_noise = np.zeros(nn)
+                                
+                                # Add the different noise components
+                                
+                                if white_noise:
+                                    final_noise += self._gen_white_noise(nn, iobs, idet, rms_even)
+                                    
+                                if self._params["my_common_mode"] is not None:
+                                    final_noise += common_mode_timestream
+                                
+                                if not custom_only:
+                                    final_noise += toast_noise
+
+                                # Change noise RMS of odd-index detectors and compute invtt
 
                                 if (idet % 2) == 1:
-                                    # change noise rms of odd-index detectors
                                     if epsilon_mean is not None:
                                         if epsilon_scatter:
                                             e = epsilons[int(idet/2)]
@@ -900,16 +1089,22 @@ class OpMappraiser(Operator):
                                                             
                                 rms_list.append(np.std(final_noise))
                                 
+                                # Define slices
+                                
                                 if not self._params["ignore_dets"]:
                                     dslice = slice(idet * nsamp + offset, int(idet/2) * nsamp + offset + nn)
                                     wslice = slice(idet * wsamp + woffset, int(idet/2) * wsamp + woffset + self._params["Lambda"])
                                 else:
                                     dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + nn)
                                     wslice = slice(int(idet/2) * wsamp + woffset, int(idet/2) * wsamp + woffset + self._params["Lambda"])
+                                
+                                # Stage timestream and invtt
+                                
                                 self._mappraiser_noise[dslice] = final_noise
                                 self._mappraiser_invtt[wslice] = invtt
                                 offset += nn
                                 woffset += self._params["Lambda"]
+                                
                             del toast_noise
                             del final_noise
                             del invtt
@@ -926,29 +1121,38 @@ class OpMappraiser(Operator):
                         for idet, det in enumerate(detectors):
                             # Get the signal.
                             if (idet % 2) == 0:
-                                toastnoise_0 = tod.local_signal(det, self._noise_name)
-                                noise_dtype = toastnoise_0.dtype
-                                nn = len(toastnoise_0)
-                                if white_noise_only:
-                                    final_noise_0 = self._gen_white_noise(nn, seed, iobs, idet, self._rank, rms_even)
-                                elif white_noise:
-                                    final_noise_0 = toastnoise_0 + \
-                                        self._gen_white_noise(nn, seed, iobs, idet, self._rank, rms_even)
-                                else:
-                                    final_noise_0 = toastnoise_0
+                                toast_noise_0 = tod.local_signal(det, self._noise_name)
+                                noise_dtype = toast_noise_0.dtype
+                                nn = len(toast_noise_0)
+                                
+                                final_noise_0 = np.zeros(nn)
+                                
+                                if white_noise:
+                                    final_noise_0 += self._gen_white_noise(nn, iobs, idet, rms_even)
+                                    
+                                if self._params["my_common_mode"] is not None:
+                                    final_noise_0 += common_mode_timestream
+                                
+                                if not custom_only:
+                                    final_noise_0 += toast_noise_0
+                                    
                             if (idet % 2) == 1:
-                                toastnoise_1 = tod.local_signal(det, self._noise_name)
-                                noise_dtype = toastnoise_1.dtype
+                                toast_noise_1 = tod.local_signal(det, self._noise_name)
+                                noise_dtype = toast_noise_1.dtype
                                 offset = global_offset
                                 woffset = global_woffset
-                                nn = len(toastnoise_1)
-                                if white_noise_only:
-                                    final_noise_1 = self._gen_white_noise(nn, seed, iobs, idet, self._rank, rms_even)
-                                elif white_noise:
-                                    final_noise_1 = toastnoise_1 + \
-                                        self._gen_white_noise(nn, seed, iobs, idet, self._rank, rms_even)
-                                else:
-                                    final_noise_1 = toastnoise_1
+                                nn = len(toast_noise_1)
+                                
+                                final_noise_1 = np.zeros(nn)
+                                
+                                if white_noise:
+                                    final_noise_1 += self._gen_white_noise(nn, iobs, idet, rms_even)
+                                    
+                                if self._params["my_common_mode"] is not None:
+                                    final_noise_1 += common_mode_timestream
+                                
+                                if not custom_only:
+                                    final_noise_1 += toast_noise_1
                                 
                                 if epsilon_mean is not None:
                                     if epsilon_scatter:
@@ -972,8 +1176,8 @@ class OpMappraiser(Operator):
                                 self._mappraiser_invtt[wslice] = invtt
                                 offset += nn
                                 woffset += self._params["Lambda"]
-                                del toastnoise_0
-                                del toastnoise_1
+                                del toast_noise_0
+                                del toast_noise_1
                                 del final_noise_0
                                 del final_noise_1
                                 del invtt
