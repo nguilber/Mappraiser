@@ -406,8 +406,9 @@ class OpMappraiser(Operator):
         """ Computes a periodogram from a noise timestream, and fits a PSD model
         to it, which is then used to build the first row of a Toeplitz block.
         """
+        
         # distinguish case of only white noise (no need to fit PSD in this case)
-        if self._params["white_noise_only"]:
+        if self._params["custom_noise_only"] and self._params["white_noise"] and self._params["my_common_mode"] is None:
             
             assert rms_even is not None # and rms_factor is not None
             
