@@ -192,6 +192,15 @@ def add_mappraiser_args(parser):
         type=np.uint8,
         help="Ignore detectors to make half maps. 0->take all dets. 1->ignore odd dets. 2->ignore even dets"
     )
+    
+    parser.add_argument(
+        "--save-noise-psd",
+        dest="save_noise_psd",
+        required=False,
+        action="store_true",
+        help="Save the PSD of the simulated noise timestream for detector 0."
+    )
+    parser.set_defaults(save_noise_psd=False)
 
     return
 
@@ -231,6 +240,8 @@ def setup_mappraiser(args):
     params["epsilon_frac_sd"] = args.epsilon_frac_sd
     params["epsilon_seed"] = args.epsilon_seed
     params["ignore_dets"] = args.ignore_dets
+    
+    params["save_noise_psd"] = args.save_noise_psd
 
     return params
 

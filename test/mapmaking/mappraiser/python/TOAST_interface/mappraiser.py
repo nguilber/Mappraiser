@@ -407,6 +407,8 @@ class OpMappraiser(Operator):
         to it, which is then used to build the first row of a Toeplitz block.
         """
         
+        output = self._params["output"]
+        
         # distinguish case of only white noise (no need to fit PSD in this case)
         if self._params["custom_noise_only"] and self._params["white_noise"] and self._params["my_common_mode"] is None:
             
@@ -428,20 +430,31 @@ class OpMappraiser(Operator):
             
             inv_tt = np.array([1 / sigma2])
             
-            # DEBUG begin
-            # sampling_freq = self._params["samplerate"]
-            # Max_lambda = 2**(int(math.log(nn/4,2))) # closest power of two to 1/4 of the timestream length
-            # f_defl = sampling_freq/(np.pi*Max_lambda)
-            # df = f_defl/2
-            # block_size = 2**(int(math.log(sampling_freq*1./df,2)))
-            
-            # f, psd = scipy.signal.periodogram(noise, sampling_freq,nfft=block_size,window='blackman')
-            
-            # psd_sim_m1 = np.reciprocal(psd)
-            # if self._rank == 0 and idet < 10:
-            #     output = self._params["output"]
-            #     np.save(output+f"/psd_sim_{idet}.npy", psd_sim_m1)
-            # DEBUG end
+            if self._params["save_noise_psd"] and self._rank == 0 and idet == 0:
+                
+                sampling_freq = self._params["samplerate"]
+                Max_lambda = 2**(int(math.log(nn/4,2)))
+                f_defl = sampling_freq/(np.pi*Max_lambda)
+                df = f_defl/2
+                block_size = 2**(int(math.log(sampling_freq*1./df,2)))
+                
+                f, psd = scipy.signal.periodogram(noise, sampling_freq,nfft=block_size,window='blackman')
+                
+                popt,pcov = curve_fit(
+                    white_psd,
+                    f[1:],
+                    np.log10(psd[1:]),
+                    p0=-7.0,
+                    bounds=(-20.0, 0.),
+                    maxfev = 1000
+                )
+
+                print("\n[det "+str(idet)+f"]: PSD fit log(sigma2) = {popt[0]:{1}.{2}}", flush=True)
+                print("[det "+str(idet)+f"]: PSD fit covariance = [[{pcov[0][0]}]]\n", flush=True)
+
+                psd_sim_m1 = np.reciprocal(psd)
+                np.save(output+"/freq.npy", fftfreq(block_size, 1./sampling_freq)[:int(block_size/2)])
+                np.save(output+"/psd_sim.npy", psd_sim_m1)
             
             return inv_tt
 
@@ -458,22 +471,16 @@ class OpMappraiser(Operator):
             f, psd = scipy.signal.periodogram(noise, sampling_freq,nfft=block_size,window='blackman')
             # if idet==37:
             #     print(len(f), flush=True)
+            psd_sim_m1 = np.reciprocal(psd)
             
             # Fit the psd model to the periodogram (in log scale)
-            popt,pcov = curve_fit(logpsd_model,f[1:],np.log10(psd[1:]),p0=np.array([-7, -1.0, 0.1, 0.]), bounds=([-20, -10, 0., 0.], [0., 0., 10, 0.001]), maxfev = 1000)        # popt[1] = -5.
+            popt,pcov = curve_fit(logpsd_model,f[1:],np.log10(psd[1:]),p0=np.array([-7, -1.0, 0.1, 0.]), bounds=([-20, -10, 0., 0.], [0., 0., 10, 0.01]), maxfev = 1000)        # popt[1] = -5.
             # popt[2] = 2.
             if self._rank == 0 and idet == 0:
                 print("\n[det "+str(idet)+"]: PSD fit log(sigma2) = %1.2f, alpha = %1.2f, fknee = %1.2f, fmin = %1.2f\n" % tuple(popt), flush=True)
                 print("[det "+str(idet)+"]: PSD fit covariance: \n", pcov, flush=True)
             # psd_fit_m1 = np.zeros_like(f)
             # psd_fit_m1[1:] = inversepsd_model(f[1:],10**popt[0],popt[1],popt[2])
-
-            # Invert periodogram
-            psd_sim_m1 = np.reciprocal(psd)
-            if self._rank == 0 and idet < 10:
-                output = self._params["output"]
-                np.save(output+f"/psd_sim_{idet}.npy", psd_sim_m1)
-            # psd_sim_m1_log = np.log10(psd_sim_m1)
 
             # Invert the fit to the psd model / Fit the inverse psd model to the inverted periodogram
             # popt,pcov = curve_fit(inverselogpsd_model,f[1:],psd_sim_m1_log[1:])
@@ -505,9 +512,9 @@ class OpMappraiser(Operator):
             inv_tt_w = np.multiply(symw, inv_tt, dtype = mappraiser.INVTT_TYPE)
 
             # effective inverse noise power
-            if self._rank == 0 and idet == 0:
+            if self._params["save_noise_psd"] and self._rank == 0 and idet == 0:
+                np.save(output+"/psd_sim.npy", psd_sim_m1)
                 psd = np.abs(np.fft.fft(inv_tt_w,n=block_size))
-                output = self._params["output"]
                 np.save(output+"/freq.npy",fs[:int(block_size/2)])
                 np.save(output+"/psd0.npy",psdm1[:int(block_size/2)])
                 np.save(output+"/psd"+str(self._params["Lambda"])+".npy",psd[:int(block_size/2)])
