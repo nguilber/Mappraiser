@@ -38,27 +38,53 @@ int defineTpltz_avg( Tpltz *Nm1, int64_t nrow, int m_cw, int m_rw, Block *tpltzb
 
 
 
-int defineBlocks_avg(Block *tpltzblocks, double *T, int nb_blocks_loc, void *local_blocks_sizes, int lambda_block_avg, int64_t id0 )
+int defineBlocks_avg(Block *tpltzblocks, Block *tpltzblocks2, double *T, int nb_blocks_loc, void *local_blocks_sizes, int lambda_block_avg, int64_t id0, int nbsamples)
 {
 
 int i, index0;
 
 
-  for ( i=0; i<nb_blocks_loc; i++)
+  for ( i=0; i<nb_blocks_loc; i++){
     tpltzblocks[i].n = ((int *)local_blocks_sizes)[i];
+    tpltzblocks2[i].n = ((int *)local_blocks_sizes)[i];
+  }
 
   for ( i=0; i<nb_blocks_loc; i++)
+  {
     tpltzblocks[i].lambda = lambda_block_avg;
+    tpltzblocks2[i].lambda = lambda_block_avg;
+  }
 
   // tpltzblocks[0].idv = (int64_t) (id0/n_block_avg) * n_block_avg ;
   tpltzblocks[0].idv = id0 ;
+  tpltzblocks2[0].idv = id0 ;
   for(i=1;i<nb_blocks_loc;i++)
+  {
     tpltzblocks[i].idv = (int64_t) tpltzblocks[i-1].idv + tpltzblocks[i-1].n;
+    tpltzblocks2[i].idv = (int64_t) tpltzblocks[i-1].idv + tpltzblocks[i-1].n;
+  }
 
   index0 = 0;
   for( i=0; i<nb_blocks_loc; i++) {
     tpltzblocks[i].T_block = (T+index0);
     index0 += tpltzblocks[i].lambda;
+
+    int locnbsamples = tpltzblocks[i].lambda*nbsamples/100;
+
+    int sampleIdx[tpltzblocks[i].lambda];
+    for (int il = 0; il < tpltzblocks[i].lambda; il++) {
+      sampleIdx[il] = il;
+      tpltzblocks2[i].T_block[il] = tpltzblocks[i].T_block[il];
+    }
+    for (int il = 0; il < nbsamples; il++) {
+      int idxsave = sampleIdx[il];
+      int randidx = il+rand()%(tpltzblocks2[i].lambda-il);
+      sampleIdx[il]    = sampleIdx[randidx];
+      sampleIdx[randidx] = idxsave;
+      if (sampleIdx[il] > 0) {
+        tpltzblocks2[i].T_block[sampleIdx[il]] = 0.;
+      }
+    }
   }
 
   return 0;
