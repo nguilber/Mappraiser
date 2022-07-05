@@ -140,7 +140,7 @@ def add_mappraiser_args(parser):
         dest="white_noise",
         required=False,
         action="store_true",
-        help="Generate simple white noise for each detector independently"
+        help="Generate simple white noise (gaussian) for each detector independently."
     )
     parser.add_argument(
         "--no-white-noise",
@@ -152,11 +152,20 @@ def add_mappraiser_args(parser):
     parser.set_defaults(white_noise=False)
     
     parser.add_argument(
+        "--white-noise-NET",
+        dest="white_noise_NET",
+        required=False,
+        default=400e-6,  # 400 µK.√s typical for SAT detector white noise ceiling
+        type=np.double,
+        help="NET (K.√s) of the white noise signal."
+    )
+    
+    parser.add_argument(
         "--my-common-mode",
         dest="my_common_mode",
         required=False,
         default=None,
-        help="String defining analytical parameters of a common mode added to all detectors: 'fmin[Hz],fknee[Hz],alpha,NET[K]'. Remove argument if no common mode is to be generated."
+        help="String defining analytical parameters of a common mode added to all detectors: 'fmin[Hz],fknee[Hz],alpha,NET[K.√s]'. Remove argument if no common mode is to be generated."
     )
     
     parser.add_argument(
@@ -164,7 +173,7 @@ def add_mappraiser_args(parser):
         dest="custom_noise_only",
         required=False,
         action="store_true",
-        help="Only generate custom noise (white and/or common mode)"
+        help="Only generate custom noise (white and/or common mode)."
     )
     parser.add_argument(
         "--no-custom-noise-only",
@@ -231,6 +240,7 @@ def setup_mappraiser(args):
     
     # custom noise generation
     params["white_noise"] = args.white_noise
+    params["white_noise_NET"] = args.white_noise_NET
     params["my_common_mode"] = args.my_common_mode
     params["rng_seed"] = args.rng_seed
     params["custom_noise_only"] = args.custom_noise_only

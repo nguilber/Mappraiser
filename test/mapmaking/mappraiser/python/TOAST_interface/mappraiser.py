@@ -79,6 +79,112 @@ def get_truncated_normal(mean=0.0, sd=1.0, low=0.0, upp=10.0):
     return truncnorm(
         (low - mean) / sd, (upp - mean) / sd, loc=mean, scale=sd)
 
+def custom_noise_timestream(freq, psd, rate, samples, seed, oversample=2):
+    """ This function is for the most part taken from TOAST python code (function sim_noise_timestream in tod_math).
+    
+    Args:
+        freq (array): the frequency points of the PSD.
+        psd (array): the PSD values.
+        rate (float): the sample rate.
+        samples (int): the number of samples to generate.
+        oversample (int): the factor by which to expand the FFT length beyond the number of samples.
+    """
+    
+    fftlen = 2
+    while fftlen <= (oversample * samples):
+        fftlen *= 2
+    npsd = fftlen // 2 + 1
+    norm = rate * float(npsd - 1)
+
+    interp_freq = np.fft.rfftfreq(fftlen, 1 / rate)
+    if interp_freq.size != npsd:
+        raise RuntimeError(
+            "interpolated PSD frequencies do not have expected length"
+        )
+
+    # Ensure that the input frequency range includes all the frequencies
+    # we need.  Otherwise the extrapolation is not well defined.
+
+    if np.amin(freq) < 0.0:
+        raise RuntimeError("input PSD frequencies should be >= zero")
+
+    if np.amin(psd) < 0.0:
+        raise RuntimeError("input PSD values should be >= zero")
+
+    increment = rate / fftlen
+
+    if freq[0] > increment:
+        raise RuntimeError(
+            "input PSD does not go to low enough frequency to "
+            "allow for interpolation"
+        )
+
+    nyquist = rate / 2
+    if np.abs((freq[-1] - nyquist) / nyquist) > 0.01:
+        raise RuntimeError(
+            "last frequency element does not match Nyquist "
+            "frequency for given sample rate: {} != {}".format(freq[-1], nyquist)
+        )
+
+    # Perform a logarithmic interpolation.  In order to avoid zero values, we
+    # shift the PSD by a fixed amount in frequency and amplitude.
+
+    psdshift = 0.01 * np.amin(psd[(psd > 0.0)])
+    freqshift = increment
+
+    loginterp_freq = np.log10(interp_freq + freqshift)
+    logfreq = np.log10(freq + freqshift)
+    logpsd = np.log10(psd + psdshift)
+
+    interp = interpolate.interp1d(logfreq, logpsd, kind="linear", fill_value="extrapolate")
+
+    loginterp_psd = interp(loginterp_freq)
+    interp_psd = np.power(10.0, loginterp_psd) - psdshift
+
+    # Zero out DC value
+
+    interp_psd[0] = 0.0
+
+    scale = np.sqrt(interp_psd * norm)
+
+    # # gaussian Re/Im randoms, packed into a complex valued array
+
+    # key1 = realization * 4294967296 + telescope * 65536 + component
+    # key2 = obsindx * 4294967296 + detindx
+    # counter1 = 0
+    # counter2 = firstsamp * oversample
+
+    # rngdata = rng.random(
+    #     fftlen, sampler="gaussian", key=(key1, key2), counter=(counter1, counter2)
+    # ).array()
+
+    # Use Numpy's random number generator with input user seed
+    rng = np.random.default_rng(seed)
+    rngdata = rng.normal(size=fftlen)
+
+    fdata = np.zeros(npsd, dtype=np.complex)
+
+    # Set the DC and Nyquist frequency imaginary part to zero
+    fdata[0] = rngdata[0] + 0.0j
+    fdata[-1] = rngdata[npsd - 1] + 0.0j
+
+    # Repack the other values.
+    fdata[1:-1] = rngdata[1 : npsd - 1] + 1j * rngdata[-1 : npsd - 1 : -1]
+
+    # scale by PSD
+    fdata *= scale
+
+    # inverse FFT
+    tdata = np.fft.irfft(fdata)
+
+    # subtract the DC level- for just the samples that we are returning
+    offset = (fftlen - samples) // 2
+
+    DC = np.mean(tdata[offset : offset + samples])
+    tdata[offset : offset + samples] -= DC
+    
+    return (tdata[offset : offset + samples], interp_freq, interp_psd)
+    
 class OpMappraiser(Operator):
     """
     Operator which passes data to libmappraiser for map-making.
@@ -406,165 +512,188 @@ class OpMappraiser(Operator):
         """ Computes a periodogram from a noise timestream, and fits a PSD model
         to it, which is then used to build the first row of a Toeplitz block.
         """
-        
-        output = self._params["output"]
-        
+
         # distinguish case of only white noise (no need to fit PSD in this case)
-        if self._params["custom_noise_only"] and self._params["white_noise"] and self._params["my_common_mode"] is None:
-            
-            assert rms_even is not None # and rms_factor is not None
-            
-            sigma2 = rms_even ** 2
-            
-            if rms_factor is None:
-                pass
-            else:
-                f = rms_factor ** 2
-                if not self._pair_diff:
-                    if (idet % 2) == 0:
-                        pass
-                    if (idet % 2) == 1:
-                        sigma2 *= f
-                else:
-                    sigma2 *= (1 + f) / 4
-            
-            inv_tt = np.array([1 / sigma2])
-            
-            if self._params["save_noise_psd"] and self._rank == 0 and idet == 0:
-                
-                sampling_freq = self._params["samplerate"]
-                Max_lambda = 2**(int(math.log(nn/4,2)))
-                f_defl = sampling_freq/(np.pi*Max_lambda)
-                df = f_defl/2
-                block_size = 2**(int(math.log(sampling_freq*1./df,2)))
-                
-                f, psd = scipy.signal.periodogram(noise, sampling_freq,nfft=block_size,window='blackman')
-                
-                popt,pcov = curve_fit(
-                    white_psd,
-                    f[1:],
-                    np.log10(psd[1:]),
-                    p0=-7.0,
-                    bounds=(-20.0, 0.),
-                    maxfev = 1000
-                )
+        # if self._params["custom_noise_only"] and self._params["white_noise"] and self._params["my_common_mode"] is None:
+        #     assert rms_even is not None # and rms_factor is not None
+        #     sigma2 = rms_even ** 2
+        #     if rms_factor is None:
+        #         pass
+        #     else:
+        #         f = rms_factor ** 2
+        #         if not self._pair_diff:
+        #             if (idet % 2) == 0:
+        #                 pass
+        #             if (idet % 2) == 1:
+        #                 sigma2 *= f
+        #         else:
+        #             sigma2 *= (1 + f) / 4
+        #     inv_tt = np.array([1 / sigma2])
+        #     if self._params["save_noise_psd"] and self._rank == 0 and idet == 0:
+        #         sampling_freq = self._params["samplerate"]
+        #         Max_lambda = 2**(int(math.log(nn/4,2)))
+        #         f_defl = sampling_freq/(np.pi*Max_lambda)
+        #         df = f_defl/2
+        #         block_size = 2**(int(math.log(sampling_freq*1./df,2)))
+        #         f, psd = scipy.signal.periodogram(noise, sampling_freq,nfft=block_size,window='blackman')
+        #         popt,pcov = curve_fit(
+        #             white_psd,
+        #             f[1:],
+        #             np.log10(psd[1:]),
+        #             p0=-7.0,
+        #             bounds=(-20.0, 0.),
+        #             maxfev = 1000
+        #         )
+        #         print("\n[det "+str(idet)+f"]: PSD fit log(sigma2) = {popt[0]:{1}.{2}}", flush=True)
+        #         print("[det "+str(idet)+f"]: PSD fit covariance = [[{pcov[0][0]}]]\n", flush=True)
+        #         psd_sim_m1 = np.reciprocal(psd)
+        #         np.save(self._params["output"]+"/freq.npy", fftfreq(block_size, 1./sampling_freq)[:int(block_size/2)])
+        #         np.save(self._params["output"]+"/psd_sim.npy", psd_sim_m1)
+        #     return inv_tt
 
-                print("\n[det "+str(idet)+f"]: PSD fit log(sigma2) = {popt[0]:{1}.{2}}", flush=True)
-                print("[det "+str(idet)+f"]: PSD fit covariance = [[{pcov[0][0]}]]\n", flush=True)
+        # parameters
+        sampling_freq = self._params["samplerate"]
+        Max_lambda = 2**(int(math.log(nn/4,2))) # closest power of two to 1/4 of the timestream length
+        f_defl = sampling_freq/(np.pi*Max_lambda)
+        df = f_defl/2
+        block_size = 2**(int(math.log(sampling_freq*1./df,2)))
 
-                psd_sim_m1 = np.reciprocal(psd)
-                np.save(output+"/freq.npy", fftfreq(block_size, 1./sampling_freq)[:int(block_size/2)])
-                np.save(output+"/psd_sim.npy", psd_sim_m1)
+        # Compute periodogram
+        f, psd = scipy.signal.periodogram(noise, sampling_freq,nfft=block_size,window='blackman')
+        psd_sim_m1 = np.reciprocal(psd)
+        
+        if self._params["custom_noise_only"] and self._params["white_noise"] \
+            and self._params["my_common_mode"] is None:
+            # In that case we fit the PSD with a flat PSD model
+            popt, pcov = curve_fit(
+                white_psd,
+                f[1:],
+                np.log10(psd[1:]),
+                p0=-6.7,
+                bounds=(-20.0, 0.),
+                maxfev = 1000
+            )
+            if self._rank == 0 and idet == 0:
+                print("\n[det "+str(idet)+f"]: white noise NET fit (log10) = {popt[0]:{1}.{4}}", flush=True)
+                print("[det "+str(idet)+f"]: fit covariance = [[{pcov[0][0]}]]\n", flush=True)
             
-            return inv_tt
+            psd_fit_m1 = np.zeros_like(f)
+            psd_fit_m1[1:] = white_psd(f[1:], 10**(-popt[0]))
 
         else:
-
-            # parameters
-            sampling_freq = self._params["samplerate"]
-            Max_lambda = 2**(int(math.log(nn/4,2))) # closest power of two to 1/4 of the timestream length
-            f_defl = sampling_freq/(np.pi*Max_lambda)
-            df = f_defl/2
-            block_size = 2**(int(math.log(sampling_freq*1./df,2)))
-
-            # Compute periodogram
-            f, psd = scipy.signal.periodogram(noise, sampling_freq,nfft=block_size,window='blackman')
-            # if idet==37:
-            #     print(len(f), flush=True)
-            psd_sim_m1 = np.reciprocal(psd)
-            
             # Fit the psd model to the periodogram (in log scale)
-            popt,pcov = curve_fit(logpsd_model,f[1:],np.log10(psd[1:]),p0=np.array([-7, -1.0, 0.1, 0.]), bounds=([-20, -10, 0., 0.], [0., 0., 10, 0.01]), maxfev = 1000)        # popt[1] = -5.
-            # popt[2] = 2.
+            popt, pcov = curve_fit(
+                logpsd_model,
+                f[1:],
+                np.log10(psd[1:]),
+                p0=np.array([-7, -1.0, 0.1, 0.]),
+                bounds=([-20, -10, 0., 0.], [0., 0., 10, 0.01]),
+                maxfev = 1000
+            )
             if self._rank == 0 and idet == 0:
                 print("\n[det "+str(idet)+"]: PSD fit log(sigma2) = %1.2f, alpha = %1.2f, fknee = %1.2f, fmin = %1.2f\n" % tuple(popt), flush=True)
                 print("[det "+str(idet)+"]: PSD fit covariance: \n", pcov, flush=True)
-            # psd_fit_m1 = np.zeros_like(f)
-            # psd_fit_m1[1:] = inversepsd_model(f[1:],10**popt[0],popt[1],popt[2])
 
-            # Invert the fit to the psd model / Fit the inverse psd model to the inverted periodogram
-            # popt,pcov = curve_fit(inverselogpsd_model,f[1:],psd_sim_m1_log[1:])
-            # print(popt)
-            # print(pcov)
             psd_fit_m1 = np.zeros_like(f)
-            psd_fit_m1[1:] = inversepsd_model(f[1:],10**(-popt[0]),popt[1],popt[2], popt[3])
+            psd_fit_m1[1:] = inversepsd_model(f[1:], 10**(-popt[0]), popt[1], popt[2], popt[3])
 
-            # Initialize full size inverse PSD in frequency domain
-            fs = fftfreq(block_size, 1./sampling_freq)
-            psdm1 = np.zeros_like(fs)
+        # Initialize full size inverse PSD in frequency domain
+        fs = fftfreq(block_size, 1./sampling_freq)
+        psdm1 = np.zeros_like(fs)
 
-            # Symmetrize inverse PSD according to fs shape
-            psdm1[:int(block_size/2)] = psd_fit_m1[:-1] #psdfit[:int(block_size/2)]
-            psdm1[int(block_size/2):] = np.flip(psd_fit_m1[1:],0)
+        # Symmetrize inverse PSD according to fs shape
+        psdm1[:int(block_size/2)] = psd_fit_m1[:-1]
+        psdm1[int(block_size/2):] = np.flip(psd_fit_m1[1:], 0)
 
-            # Compute inverse noise autocorrelation functions
-            inv_tt = np.real(np.fft.ifft(psdm1, n=block_size))
+        # Compute inverse noise autocorrelation functions
+        inv_tt = np.real(np.fft.ifft(psdm1, n=block_size))
 
-            # Define apodization window
-            window = scipy.signal.gaussian(2*self._params["Lambda"], 1./2*self._params["Lambda"])
-            window = np.fft.ifftshift(window)
-            window = window[:self._params["Lambda"]]
-            window = np.pad(window,(0,int(block_size/2-(self._params["Lambda"]))),'constant')
-            symw = np.zeros(block_size)
-            symw[:int(block_size/2)] = window
-            symw[int(block_size/2):] = np.flip(window,0)
+        # Define apodization window
+        window = scipy.signal.gaussian(2*self._params["Lambda"], 1./2*self._params["Lambda"])
+        window = np.fft.ifftshift(window)
+        window = window[:self._params["Lambda"]]
+        window = np.pad(window,(0,int(block_size/2-(self._params["Lambda"]))),'constant')
+        symw = np.zeros(block_size)
+        symw[:int(block_size/2)] = window
+        symw[int(block_size/2):] = np.flip(window,0)
 
-            inv_tt_w = np.multiply(symw, inv_tt, dtype = mappraiser.INVTT_TYPE)
+        inv_tt_w = np.multiply(symw, inv_tt, dtype = mappraiser.INVTT_TYPE)
 
-            # effective inverse noise power
-            if self._params["save_noise_psd"] and self._rank == 0 and idet == 0:
-                np.save(output+"/psd_sim.npy", psd_sim_m1)
-                psd = np.abs(np.fft.fft(inv_tt_w,n=block_size))
-                np.save(output+"/freq.npy",fs[:int(block_size/2)])
-                np.save(output+"/psd0.npy",psdm1[:int(block_size/2)])
-                np.save(output+"/psd"+str(self._params["Lambda"])+".npy",psd[:int(block_size/2)])
+        if self._params["save_noise_psd"] and self._rank == 0 and idet == 0:
+            np.save(self._params["output"]+"/psd_sim.npy", psd_sim_m1)
+            psd = np.abs(np.fft.fft(inv_tt_w,n=block_size))
+            np.save(self._params["output"]+"/freq.npy",fs[:int(block_size/2)])
+            np.save(self._params["output"]+"/psd0.npy",psdm1[:int(block_size/2)])
+            np.save(self._params["output"]+"/psd"+str(self._params["Lambda"])+".npy",psd[:int(block_size/2)])
 
-            return inv_tt_w[:self._params["Lambda"]] #, popt[0], popt[1], popt[2], popt[3]
+        return inv_tt_w[:self._params["Lambda"]]
 
 
-    def _gen_white_noise(self, samples, iobs, idet, scale):
+    def _gen_white_noise(self, samples, iobs, idet):
         
         """ Generate a white (gaussian) noise timestream with given parameters.
         
-        The set of {seed, iobs, idet, rank} values determines the final seed given to the RNG.
+        The set of values {rng_seed, iobs, idet, rank of the process} determines the final seed given to the RNG.
         This can be used to reproduce the results.
         
         Args:
             samples (int): the length of the timestream.
             iobs (int): the index of the observation.
             idet (int): the index of the detector.
-            scale (float): the RMS of the timestream.
 
         Returns:
             (array): The generated noise timestream.
         """
         
-        seed = self._params["rng_seed"]
+        # Create an fake detector to store the analytic noise model.
+        detector = "det"
+        fmins = {}
+        fknees = {}
+        alphas = {}
+        NETs = {}
+        rates = {}
         
-        if seed is not None:
-            rng = np.random.default_rng(seed * 2**iobs * 3**idet * 5**self._rank)
-        else:
-            rng = np.random.default_rng()
-            
-        return rng.normal(scale=scale, size=samples)
+        # Get parameters from arguments
+        net = self._params["white_noise_NET"]
+        rate = self._params["samplerate"]
+        
+        rates[detector] = rate
+        fmins[detector] = 0.0
+        fknees[detector] = 0.0  # this will tell TOAST to generate a flat PSD
+        alphas[detector] = 0.0
+        NETs[detector] = net
+
+        # Create a noise model using TOAST's AnalyticNoise class
+        common_mode_model = AnalyticNoise(
+            rate=rates,
+            fmin=fmins,
+            detectors=[detector],
+            fknee=fknees,
+            alpha=alphas,
+            NET=NETs,
+        )
+        
+        noise, _, _ = custom_noise_timestream(
+            common_mode_model.freq(detector),
+            common_mode_model.psd(detector),
+            rate,
+            samples,
+            self._params["rng_seed"] * 2**iobs * 3**idet * 5**self._rank
+        )
+        
+        return noise
     
     
-    def _gen_common_mode(self, samples, oversample=2):
+    def _gen_common_mode(self, samples):
         
         """ Generate a common mode noise timestream.
         
-        A random number generator is used to produce unit-variance Gaussian samples.
-        Then, the Fourier domain amplitudes are modified to match the desired PSD.
-        
-        A large part of this function is taken from TOAST's function sim_noise_timestream in module tod_math.
-        
         Args:
             samples (int): the number of samples to generate.
-            oversample (int): the factor by which to expand the FFT length beyond the number of samples.
         
         Returns:
-            (array, array, array): A tuple of generated timestream, interpolated frequencies, and interpolated PSD.
-            
+            (array): The generated noise timestream.
+        
         """
 
         # Create an extra "virtual" detector for the common mode.
@@ -602,104 +731,15 @@ class OpMappraiser(Operator):
             NET=NETs,
         )
         
-        freq = common_mode_model.freq(detector)
-        psd = common_mode_model.psd(detector)
+        noise, _, _ = custom_noise_timestream(
+            common_mode_model.freq(detector),
+            common_mode_model.psd(detector),
+            rate,
+            samples,
+            self._params["rng_seed"]
+        )
         
-        # Following code taken from TOAST python code (function sim_noise_timestream in tod_math)
-        fftlen = 2
-        while fftlen <= (oversample * samples):
-            fftlen *= 2
-        npsd = fftlen // 2 + 1
-        norm = rate * float(npsd - 1)
-
-        interp_freq = np.fft.rfftfreq(fftlen, 1 / rate)
-        if interp_freq.size != npsd:
-            raise RuntimeError(
-                "interpolated PSD frequencies do not have expected length"
-            )
-
-        # Ensure that the input frequency range includes all the frequencies
-        # we need.  Otherwise the extrapolation is not well defined.
-
-        if np.amin(freq) < 0.0:
-            raise RuntimeError("input PSD frequencies should be >= zero")
-
-        if np.amin(psd) < 0.0:
-            raise RuntimeError("input PSD values should be >= zero")
-
-        increment = rate / fftlen
-
-        if freq[0] > increment:
-            raise RuntimeError(
-                "input PSD does not go to low enough frequency to "
-                "allow for interpolation"
-            )
-
-        nyquist = rate / 2
-        if np.abs((freq[-1] - nyquist) / nyquist) > 0.01:
-            raise RuntimeError(
-                "last frequency element does not match Nyquist "
-                "frequency for given sample rate: {} != {}".format(freq[-1], nyquist)
-            )
-
-        # Perform a logarithmic interpolation.  In order to avoid zero values, we
-        # shift the PSD by a fixed amount in frequency and amplitude.
-
-        psdshift = 0.01 * np.amin(psd[(psd > 0.0)])
-        freqshift = increment
-
-        loginterp_freq = np.log10(interp_freq + freqshift)
-        logfreq = np.log10(freq + freqshift)
-        logpsd = np.log10(psd + psdshift)
-
-        interp = interpolate.interp1d(logfreq, logpsd, kind="linear", fill_value="extrapolate")
-
-        loginterp_psd = interp(loginterp_freq)
-        interp_psd = np.power(10.0, loginterp_psd) - psdshift
-
-        # Zero out DC value
-
-        interp_psd[0] = 0.0
-
-        scale = np.sqrt(interp_psd * norm)
-
-        # # gaussian Re/Im randoms, packed into a complex valued array
-
-        # key1 = realization * 4294967296 + telescope * 65536 + component
-        # key2 = obsindx * 4294967296 + detindx
-        # counter1 = 0
-        # counter2 = firstsamp * oversample
-
-        # rngdata = rng.random(
-        #     fftlen, sampler="gaussian", key=(key1, key2), counter=(counter1, counter2)
-        # ).array()
-
-        # Use Numpy's random number generator with input user seed
-        rng = np.random.default_rng(self._params["rng_seed"])
-        rngdata = rng.normal(size=fftlen)
-
-        fdata = np.zeros(npsd, dtype=np.complex)
-
-        # Set the DC and Nyquist frequency imaginary part to zero
-        fdata[0] = rngdata[0] + 0.0j
-        fdata[-1] = rngdata[npsd - 1] + 0.0j
-
-        # Repack the other values.
-        fdata[1:-1] = rngdata[1 : npsd - 1] + 1j * rngdata[-1 : npsd - 1 : -1]
-
-        # scale by PSD
-        fdata *= scale
-
-        # inverse FFT
-        tdata = np.fft.irfft(fdata)
-
-        # subtract the DC level- for just the samples that we are returning
-        offset = (fftlen - samples) // 2
-
-        DC = np.mean(tdata[offset : offset + samples])
-        tdata[offset : offset + samples] -= DC
-        
-        return (tdata[offset : offset + samples], interp_freq, interp_psd)
+        return noise
         
 
     @function_timer
@@ -1001,14 +1041,15 @@ class OpMappraiser(Operator):
                 # comparison of ML and PD mapmakers
                 white_noise = self._params["white_noise"]
                 custom_only = self._params["custom_noise_only"]
-                seed = self._params["rng_seed"]
-                rms_even = 10**(-3.5)
-                rms_list = []
+                # seed = self._params["rng_seed"]
+                # rms_even = 10**(-3.5)
                 
                 # custom implemented common mode
                 if self._params["my_common_mode"] is not None:
+                    # to make sure that all detectors will generate the same common mode
+                    # we require the existence of a user-defined seed for the RNG
                     assert self._params["rng_seed"] is not None
-                    common_mode_timestream, freq, psd = self._gen_common_mode(nsamp)
+                    common_mode_timestream = self._gen_common_mode(nsamp)
                 
                 # fractional differences of noise levels in detector pairs
                 epsilon_mean = self._params["epsilon_frac_mean"]
@@ -1041,6 +1082,7 @@ class OpMappraiser(Operator):
                 # fmin_list = []
                 # alpha_list = []
                 # logsigma2_list = []                
+                # rms_list = []
                 
                 for iobs, obs in enumerate(self._data.obs):
                     tod = obs["tod"]
@@ -1072,7 +1114,7 @@ class OpMappraiser(Operator):
                                 # Add the different noise components
                                 
                                 if white_noise:
-                                    final_noise += self._gen_white_noise(nn, iobs, idet, rms_even)
+                                    final_noise += self._gen_white_noise(nn, iobs, idet)
                                     
                                 if self._params["my_common_mode"] is not None:
                                     final_noise += common_mode_timestream
@@ -1092,11 +1134,13 @@ class OpMappraiser(Operator):
                                     else:
                                         rms_factor_odd = 1.0
                                     final_noise *= rms_factor_odd
-                                    invtt = self._noise2invtt(final_noise, nn, idet, rms_even, rms_factor_odd)
-                                else:
-                                    invtt = self._noise2invtt(final_noise, nn, idet, rms_even)
-                                                            
-                                rms_list.append(np.std(final_noise))
+                                #     invtt = self._noise2invtt(final_noise, nn, idet, rms_even, rms_factor_odd)
+                                # else:
+                                #     invtt = self._noise2invtt(final_noise, nn, idet, rms_even)
+                                
+                                invtt = self._noise2invtt(final_noise, nn, idet)
+                                
+                                # rms_list.append(np.std(final_noise))
                                 
                                 # Define slices
                                 
@@ -1137,7 +1181,7 @@ class OpMappraiser(Operator):
                                 final_noise_0 = np.zeros(nn)
                                 
                                 if white_noise:
-                                    final_noise_0 += self._gen_white_noise(nn, iobs, idet, rms_even)
+                                    final_noise_0 += self._gen_white_noise(nn, iobs, idet)
                                     
                                 if self._params["my_common_mode"] is not None:
                                     final_noise_0 += common_mode_timestream
@@ -1155,7 +1199,7 @@ class OpMappraiser(Operator):
                                 final_noise_1 = np.zeros(nn)
                                 
                                 if white_noise:
-                                    final_noise_1 += self._gen_white_noise(nn, iobs, idet, rms_even)
+                                    final_noise_1 += self._gen_white_noise(nn, iobs, idet)
                                     
                                 if self._params["my_common_mode"] is not None:
                                     final_noise_1 += common_mode_timestream
@@ -1174,10 +1218,11 @@ class OpMappraiser(Operator):
                                 
                                 final_noise_1 *= rms_factor_odd
                                                                     
-                                invtt = self._noise2invtt(0.5*(final_noise_0-final_noise_1), nn, int(idet/2), rms_even,
-                                                          rms_factor_odd)
+                                # invtt = self._noise2invtt(0.5*(final_noise_0-final_noise_1), nn, int(idet/2), rms_even, rms_factor_odd)
                                 
-                                rms_list.append(np.std(0.5*(final_noise_0-final_noise_1)))
+                                invtt = self._noise2invtt(0.5*(final_noise_0-final_noise_1, nn, int(idet/2)))
+                                
+                                # rms_list.append(np.std(0.5*(final_noise_0-final_noise_1)))
                                 
                                 dslice = slice(int(idet/2) * nsamp + offset, int(idet/2) * nsamp + offset + nn)
                                 wslice = slice(int(idet/2) * wsamp + woffset, int(idet/2) * wsamp + woffset + self._params["Lambda"])
@@ -1204,35 +1249,35 @@ class OpMappraiser(Operator):
                 if self._rank == 0:
                     timer.report_clear("Stage noise {} / {}".format(iread + 1, nread))
 
-        sendcounts = np.array(self._comm.gather(len(rms_list), 0))
+        # sendcounts = np.array(self._comm.gather(len(rms_list), 0))
         
-        Rms_list = None
+        # Rms_list = None
         # Invtt_list = None
         # Fknee_list = None
         # Fmin_list = None
         # Alpha_list = None
         # Logsigma2_list = None
         
-        if self._rank == 0:
-            Rms_list = np.empty(sum(sendcounts))
+        # if self._rank == 0:
+        #     Rms_list = np.empty(sum(sendcounts))
             # Invtt_list = np.empty(sum(sendcounts))
             # Fknee_list = np.empty(sum(sendcounts))
             # Fmin_list = np.empty(sum(sendcounts))
             # Alpha_list = np.empty(sum(sendcounts))
             # Logsigma2_list = np.empty(sum(sendcounts))
 
-        self._comm.Gatherv(np.array(rms_list), (Rms_list, sendcounts), 0)
+        # self._comm.Gatherv(np.array(rms_list), (Rms_list, sendcounts), 0)
         # self._comm.Gatherv(np.ravel(np.array(invtt_list)), (Invtt_list, sendcounts), 0)
         # self._comm.Gatherv(np.array(fknee_list),(Fknee_list,sendcounts),0)
         # self._comm.Gatherv(np.array(fmin_list),(Fmin_list, sendcounts),0)
         # self._comm.Gatherv(np.array(alpha_list),(Alpha_list, sendcounts),0)
         # self._comm.Gatherv(np.array(logsigma2_list),(Logsigma2_list, sendcounts),0)
 
-        outpath = self._params["output"]
+        # outpath = self._params["output"]
         # ref = self._params["ref"]
 
-        if self._rank == 0:
-            np.save(outpath+"/Rms_list.npy", Rms_list)
+        # if self._rank == 0:
+        #     np.save(outpath+"/Rms_list.npy", Rms_list)
             # np.save(outpath+"/Invtt_list.npy", Invtt_list)
             # np.save("fknee.npy",Fknee_list)
             # np.save("fmin.npy", Fmin_list)
