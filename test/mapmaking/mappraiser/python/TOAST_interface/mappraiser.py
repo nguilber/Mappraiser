@@ -335,7 +335,7 @@ class OpMappraiser(Operator):
 
 
         if comm is None:
-            # Use the word communicator from the distributed data.
+            # Use the world communicator from the distributed data.
             comm = data.comm.comm_world
         self._data = data
         self._comm = comm
@@ -673,6 +673,12 @@ class OpMappraiser(Operator):
             NET=NETs,
         )
         
+        # DEBUG begin
+        # if self._rank == 0 and idet == 0:
+        #     np.save(self._params["output"]+"/freq_gen_white.npy", common_mode_model.freq(detector))
+        #     np.save(self._params["output"]+"/psd_gen_white.npy", common_mode_model.psd(detector))
+        # DEBUG end
+        
         noise, _, _ = custom_noise_timestream(
             common_mode_model.freq(detector),
             common_mode_model.psd(detector),
@@ -684,18 +690,21 @@ class OpMappraiser(Operator):
         return noise
     
     
-    def _gen_common_mode(self, samples):
+    def _gen_common_mode(self, samples, ob_id):
         
-        """ Generate a common mode noise timestream.
+        """ Generate a common mode noise timestream for a given observation (identified by its id).
+        The id of the observation is used as a seed so that all processes of the group
+        to which the observation is assigned generate the same mode.
         
         Args:
             samples (int): the number of samples to generate.
+            ob_id (int): the observation id.
         
         Returns:
             (array): The generated noise timestream.
         
         """
-
+        
         # Create an extra "virtual" detector for the common mode.
         # There could be several ones (typically 1 per optic tube) but this is not implemented.
         detector = "common_mode_det"
@@ -731,12 +740,18 @@ class OpMappraiser(Operator):
             NET=NETs,
         )
         
+        # DEBUG begin
+        # if self._rank == 0:
+        #     np.save(self._params["output"]+"/freq_gen_common.npy", common_mode_model.freq(detector))
+        #     np.save(self._params["output"]+"/psd_gen_common.npy", common_mode_model.psd(detector))
+        # DEBUG end
+        
         noise, _, _ = custom_noise_timestream(
             common_mode_model.freq(detector),
             common_mode_model.psd(detector),
             rate,
             samples,
-            self._params["rng_seed"]
+            self._params["rng_seed"] * ob_id
         )
         
         return noise
@@ -1018,7 +1033,7 @@ class OpMappraiser(Operator):
                         self._mappraiser_invtt = self._cache.create(
                         "invtt", mappraiser.INVTT_TYPE, (self._params["Lambda"] * len(self._data.obs) * int(ndet/2),)
                         )                       
-                else:
+                else:       
                     self._mappraiser_noise = self._cache.create(
                     "noise", mappraiser.SIGNAL_TYPE, (nsamp * int(ndet/2),)
                     )
@@ -1043,14 +1058,7 @@ class OpMappraiser(Operator):
                 custom_only = self._params["custom_noise_only"]
                 # seed = self._params["rng_seed"]
                 # rms_even = 10**(-3.5)
-                
-                # custom implemented common mode
-                if self._params["my_common_mode"] is not None:
-                    # to make sure that all detectors will generate the same common mode
-                    # we require the existence of a user-defined seed for the RNG
-                    assert self._params["rng_seed"] is not None
-                    common_mode_timestream = self._gen_common_mode(nsamp)
-                
+                                
                 # fractional differences of noise levels in detector pairs
                 epsilon_mean = self._params["epsilon_frac_mean"]
                 epsilon_sd = self._params["epsilon_frac_sd"]
@@ -1067,8 +1075,7 @@ class OpMappraiser(Operator):
                             epsilons = rv.rvs(int(ndet/2), random_state=self._params['epsilon_seed'])
                             
                             # save epsilon values for reference
-                            outpath = self._params["output"]
-                            np.save(outpath+"/epsilons.npy", epsilons)
+                            np.save(self._params["output"]+"/epsilons.npy", epsilons)
                         else:
                             epsilons = None
                         
@@ -1114,10 +1121,12 @@ class OpMappraiser(Operator):
                                 # Add the different noise components
                                 
                                 if white_noise:
+                                    # custom implemented white noise
                                     final_noise += self._gen_white_noise(nn, iobs, idet)
                                     
                                 if self._params["my_common_mode"] is not None:
-                                    final_noise += common_mode_timestream
+                                    # custom implemented common mode
+                                    final_noise += self._gen_common_mode(nn, obs["id"])
                                 
                                 if not custom_only:
                                     final_noise += toast_noise
@@ -1184,7 +1193,7 @@ class OpMappraiser(Operator):
                                     final_noise_0 += self._gen_white_noise(nn, iobs, idet)
                                     
                                 if self._params["my_common_mode"] is not None:
-                                    final_noise_0 += common_mode_timestream
+                                    final_noise_0 += self._gen_common_mode(nn, obs["id"])
                                 
                                 if not custom_only:
                                     final_noise_0 += toast_noise_0
@@ -1202,7 +1211,7 @@ class OpMappraiser(Operator):
                                     final_noise_1 += self._gen_white_noise(nn, iobs, idet)
                                     
                                 if self._params["my_common_mode"] is not None:
-                                    final_noise_1 += common_mode_timestream
+                                    final_noise_1 += self._gen_common_mode(nn, obs["id"])
                                 
                                 if not custom_only:
                                     final_noise_1 += toast_noise_1

@@ -155,7 +155,7 @@ def add_mappraiser_args(parser):
         "--white-noise-NET",
         dest="white_noise_NET",
         required=False,
-        default=400e-6,  # 400 µK.√s typical for SAT detector white noise ceiling
+        default=400e-6,  # 400 µK.√s typical for SAT detector NET (high PSD freqs)
         type=np.double,
         help="NET (K.√s) of the white noise signal."
     )
