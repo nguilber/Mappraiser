@@ -679,12 +679,16 @@ class OpMappraiser(Operator):
         #     np.save(self._params["output"]+"/psd_gen_white.npy", common_mode_model.psd(detector))
         # DEBUG end
         
+        seed = 2**iobs * 3**idet * 5**self._rank
+        if self._params["rng_seed"] is not None:
+            seed *= self._params["rng_seed"]
+        
         noise, _, _ = custom_noise_timestream(
             common_mode_model.freq(detector),
             common_mode_model.psd(detector),
             rate,
             samples,
-            self._params["rng_seed"] * 2**iobs * 3**idet * 5**self._rank
+            seed
         )
         
         return noise
@@ -746,12 +750,16 @@ class OpMappraiser(Operator):
         #     np.save(self._params["output"]+"/psd_gen_common.npy", common_mode_model.psd(detector))
         # DEBUG end
         
+        seed = ob_id
+        if self._params["rng_seed"] is not None:
+            seed *= self._params["rng_seed"]
+        
         noise, _, _ = custom_noise_timestream(
             common_mode_model.freq(detector),
             common_mode_model.psd(detector),
             rate,
             samples,
-            self._params["rng_seed"] * ob_id
+            seed
         )
         
         return noise
