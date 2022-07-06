@@ -1237,7 +1237,7 @@ class OpMappraiser(Operator):
                                                                     
                                 # invtt = self._noise2invtt(0.5*(final_noise_0-final_noise_1), nn, int(idet/2), rms_even, rms_factor_odd)
                                 
-                                invtt = self._noise2invtt(0.5*(final_noise_0-final_noise_1, nn, int(idet/2)))
+                                invtt = self._noise2invtt(0.5*(final_noise_0-final_noise_1), nn, int(idet/2))
                                 
                                 # rms_list.append(np.std(0.5*(final_noise_0-final_noise_1)))
                                 
