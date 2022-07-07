@@ -563,7 +563,7 @@ class OpMappraiser(Operator):
         psd_sim_m1 = np.reciprocal(psd)
         
         if self._params["custom_noise_only"] and self._params["white_noise"] \
-            and self._params["my_common_mode"] is None:
+            and (self._params["my_common_mode"] is None or self._pair_diff):
             # In that case we fit the PSD with a flat PSD model
             popt, pcov = curve_fit(
                 white_psd,
