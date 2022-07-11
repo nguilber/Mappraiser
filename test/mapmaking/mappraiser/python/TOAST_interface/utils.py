@@ -1,8 +1,8 @@
 # This script contains a list of routines to set mappraiser parameters, and
 # apply the OpMappraiser operator during a TOD2MAP TOAST pipeline
 
-#@author: Hamza El Bouhargani
-#@date: January 2020
+# @author: Hamza El Bouhargani
+# @date: January 2020
 
 import argparse
 import copy
@@ -15,6 +15,7 @@ from toast.utils import Logger, Environment
 
 from TOAST_interface import OpMappraiser
 
+
 def add_mappraiser_args(parser):
     """ Add libmappraiser arguments
     """
@@ -26,7 +27,7 @@ def add_mappraiser_args(parser):
         "--ref", required=False, default="run0", help="Output maps references"
     )
     parser.add_argument("--uniform_w", required=False, default=0, type=np.int, help="Activate for uniform white noise model: 0->off, 1->on"
-    )
+                        )
     parser.add_argument(
         "--Lambda", required=False, default=16384, type=np.int,
         help="Half bandwidth (lambda) of noise covariance"
@@ -39,9 +40,9 @@ def add_mappraiser_args(parser):
         help="Process differenced TOD [default]",
     )
     parser.add_argument("--precond", required=False, default=0, type=np.int, help="Choose map-making preconditioner: 0->BD, 1->2lvl a priori, 2->2lvl a posteriori"
-    )
+                        )
     parser.add_argument("--Z_2lvl", required=False, default=0, type=np.int, help="2lvl deflation size"
-    )
+                        )
     parser.add_argument(
         "--solver", required=False, default=0, type=np.int,
         help="Choose map-making solver: 0->PCG, 1->ECG"
@@ -55,13 +56,13 @@ def add_mappraiser_args(parser):
         help="Tolerance parameter for convergence"
     )
     parser.add_argument("--maxiter", required=False, default=500, type=np.int, help="Maximum number of iterations in Mappraiser"
-    )
+                        )
     parser.add_argument("--enlFac", required=False, default=1, type=np.int, help="Enlargement factor for ECG"
-    )
+                        )
     parser.add_argument("--ortho_alg", required=False, default=1, type=np.int, help="Orthogonalization scheme for ECG. O:odir, 1:omin"
-    )
-    parser.add_argument("--bs_red", required=False, default = 0, type=np.int, help="Use dynamic search reduction"
-    )
+                        )
+    parser.add_argument("--bs_red", required=False, default=0, type=np.int, help="Use dynamic search reduction"
+                        )
     parser.add_argument(
         "--conserve-memory",
         dest="conserve_memory",
@@ -78,7 +79,7 @@ def add_mappraiser_args(parser):
     )
     parser.set_defaults(conserve_memory=True)
 
-     # `nside` may already be added
+    # `nside` may already be added
     try:
         parser.add_argument(
             "--nside", required=False, default=512, type=np.int, help="Healpix NSIDE"
@@ -116,7 +117,7 @@ def add_mappraiser_args(parser):
         type=np.double,
         help="Mean fractional noise difference in detector pairs"
     )
-    
+
     parser.add_argument(
         "--epsilon-frac-sd",
         dest="epsilon_frac_sd",
@@ -125,7 +126,7 @@ def add_mappraiser_args(parser):
         type=np.double,
         help="Std deviation of fractional noise difference in detector pairs (if 0, all pairs will take the value given by --epsilon-frac-mean"
     )
-    
+
     parser.add_argument(
         "--epsilon-seed",
         dest="epsilon_seed",
@@ -150,16 +151,17 @@ def add_mappraiser_args(parser):
         help="Do not generate white noise [default]"
     )
     parser.set_defaults(white_noise=False)
-    
+
     parser.add_argument(
         "--white-noise-NET",
         dest="white_noise_NET",
         required=False,
-        default=400e-6,  # 400 µK.√s typical for SAT detector NET (high PSD freqs)
+        # 400 µK.√s typical for SAT detector NET (high PSD freqs)
+        default=400e-6,
         type=np.double,
         help="NET (K.√s) of the white noise signal."
     )
-    
+
     parser.add_argument(
         "--my-common-mode",
         dest="my_common_mode",
@@ -167,7 +169,7 @@ def add_mappraiser_args(parser):
         default=None,
         help="String defining analytical parameters of a common mode added to all detectors: 'fmin[Hz],fknee[Hz],alpha,NET[K.√s]'. Remove argument if no common mode is to be generated."
     )
-    
+
     parser.add_argument(
         "--custom-noise-only",
         dest="custom_noise_only",
@@ -192,7 +194,7 @@ def add_mappraiser_args(parser):
         type=np.int,
         help="Specify seed for custom noise generation (white noise and common mode). MUST be specified when using custom common mode noise."
     )
-    
+
     parser.add_argument(
         "--ignore-dets",
         dest="ignore_dets",
@@ -201,7 +203,7 @@ def add_mappraiser_args(parser):
         type=np.uint8,
         help="Ignore detectors to make half maps. 0->take all dets. 1->ignore odd dets. 2->ignore even dets"
     )
-    
+
     parser.add_argument(
         "--save-noise-psd",
         dest="save_noise_psd",
@@ -212,6 +214,7 @@ def add_mappraiser_args(parser):
     parser.set_defaults(save_noise_psd=False)
 
     return
+
 
 @function_timer
 def setup_mappraiser(args):
@@ -237,23 +240,24 @@ def setup_mappraiser(args):
     params["enlFac"] = args.enlFac
     params["ortho_alg"] = args.ortho_alg
     params["bs_red"] = args.bs_red
-    
+
     # custom noise generation
     params["white_noise"] = args.white_noise
     params["white_noise_NET"] = args.white_noise_NET
     params["my_common_mode"] = args.my_common_mode
     params["rng_seed"] = args.rng_seed
     params["custom_noise_only"] = args.custom_noise_only
-    
+
     # noise level differences in detector pairs
     params["epsilon_frac_mean"] = args.epsilon_frac_mean
     params["epsilon_frac_sd"] = args.epsilon_frac_sd
     params["epsilon_seed"] = args.epsilon_seed
     params["ignore_dets"] = args.ignore_dets
-    
+
     params["save_noise_psd"] = args.save_noise_psd
 
     return params
+
 
 @function_timer
 def apply_mappraiser(
@@ -286,10 +290,10 @@ def apply_mappraiser(
         log.info("Making maps")
 
     mappraiser = OpMappraiser(
-        params= params,
+        params=params,
         purge=True,
         name=signalname,
-        noise_name = noisename,
+        noise_name=noisename,
         conserve_memory=args.conserve_memory,
         pair_diff=args.pair_diff,
     )
@@ -330,9 +334,9 @@ def apply_mappraiser(
                 time_comm.barrier()
             if comm.world_rank == 0 and verbose:
                 timer.report_clear("Mapping {}_telescope_{}_time_{}".format(
-                args.outpath,
-                tele_name,
-                time_name,
+                    args.outpath,
+                    tele_name,
+                    time_name,
                 ))
 
     if comm.comm_world is not None:

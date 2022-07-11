@@ -36,22 +36,23 @@ void write_map(void *signal, int type, long nside, const char *filename,
                char nest, const char *coordsys);
 
 /* Preconditioner routines */
-struct Precond {
-  int precond; // 0 = BJ, 1 = 2lvl a priori, 2 = 2lvl a posteriori
-  int n;
-  int Zn;
-  Mat BJ_inv;
-  Mat BJ;
-  double *pixpond;
+struct Precond
+{
+    int precond; // 0 = BJ, 1 = 2lvl a priori, 2 = 2lvl a posteriori
+    int n;
+    int Zn;
+    Mat BJ_inv;
+    Mat BJ;
+    double *pixpond;
 
-  /* 2 lvl only (NULL otherwise) */
-  double **Z;
-  double **AZ;
-  double *Em1; // size Zn*Zn
-  double *Qg; // size n
-  double *AQg; // size n
-  double *Qtx; // size Zn
-  double *w; // size Zn
+    /* 2 lvl only (NULL otherwise) */
+    double **Z;
+    double **AZ;
+    double *Em1; // size Zn*Zn
+    double *Qg;  // size n
+    double *AQg; // size n
+    double *Qtx; // size Zn
+    double *w;   // size Zn
 };
 
 // Block-Jacobi preconditioner
@@ -71,7 +72,7 @@ void free_precond(struct Precond **in_out_p);
 // Pixel share ponderation to deal with overlapping pixels between multiple MPI procs
 int get_pixshare_pond(Mat *A, double *pixpond);
 
-//PCG routine
+// PCG routine
 int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double *b, double *noise, double *cond, int *lhits, double tol, int K, int precond, int Z_2lvl, Mat **BJ);
 
 // ECG routine
