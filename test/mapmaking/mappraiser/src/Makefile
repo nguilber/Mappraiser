@@ -1,4 +1,4 @@
-DIR = $(HOME)/midapack
+DIR = $(MIDADIR)
 MIDAPACK_ROOT=$(PREFIX)/midapack
 MIDAPACK_LIB=$(MIDAPACK_ROOT)/lib
 MPICC = cc
