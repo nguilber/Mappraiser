@@ -317,7 +317,7 @@ int prepare_Rand_GLS(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *b, dou
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++AAAAAAAAAAAAAAAAAAAAA
   //          Random selection of the blocks
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++AAAAAAAAAAAAAAAAAAAAA
-  nbsamples = (Nm1.nb_blocks_loc)*100/100;
+  nbsamples = (Nm1.nb_blocks_loc)*50/100;
   for (int iblk = 0; iblk < Nm1.nb_blocks_loc; iblk++) {
     sampleIdx[iblk] = iblk;
   }

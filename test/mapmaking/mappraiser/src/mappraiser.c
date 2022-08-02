@@ -196,7 +196,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
   tpltzblocks2 = (Block *) malloc(nb_blocks_loc * sizeof(Block));
   int prct_z = 30;
   defineBlocks_avg(tpltzblocks, tpltzblocks2, invtt, nb_blocks_loc, local_blocks_sizes, lambda_block_avg, id0, prct_z);
-  defineTpltz_avg( &Nm1, nrow, 1, mcol, tpltzblocks2, nb_blocks_loc, nb_blocks_tot, id0, local_V_size, flag_stgy, comm);
+  defineTpltz_avg( &Nm1, nrow, 1, mcol, tpltzblocks, nb_blocks_loc, nb_blocks_tot, id0, local_V_size, flag_stgy, comm);
   if (rank==0) {
     printf("[rank %d] Noise model: Banded block Toeplitz, half bandwidth = %d \n", rank, lambda_block_avg);
     printf("[rank %d] %s  %s \n", rank, outpath, ref);
@@ -258,7 +258,7 @@ void MLmap(MPI_Comm comm, char *outpath, char *ref, int solver, int precond, int
     //   }
     // fclose(fp);
     // free(mapI_true);
-    defineTpltz_avg( &Nm1, nrow, 1, mcol, tpltzblocks, nb_blocks_loc, nb_blocks_tot, id0, local_V_size, flag_stgy, comm);
+    // defineTpltz_avg( &Nm1, nrow, 1, mcol, tpltzblocks, nb_blocks_loc, nb_blocks_tot, id0, local_V_size, flag_stgy, comm);
     int precond2 = 0;
     PCG_GLS_true(outpath, ref, &A, Nm1, x, signal, noise, cond, lhits, tol, maxiter, precond2, Z_2lvl, x_B, mapsizeB, B.lindices, B.trash_pix, nbsamples, sampleIdx, Neighbours, InterpWeights, normb);
 
