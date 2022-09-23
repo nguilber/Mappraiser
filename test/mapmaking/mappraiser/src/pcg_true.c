@@ -54,7 +54,7 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
     m = A->m;
 
     st = MPI_Wtime();
-    Z_2lvl = 150;
+    Z_2lvl = 5;
 
     if (Z_2lvl == 0) Z_2lvl = size;
     int old_npix = A->lcount/A->nnz;
@@ -123,8 +123,9 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
 
     apply_precond(p, A, &Nm1, g, Cg);
 
-    for (j = 0; j < n; j++) // h = -Cg
-        h[j] = Cg[j];
+    for (j = 0; j < n; j++){ // h = -Cg
+        // Cg[j] = g[j];
+        h[j] = Cg[j];}
 
     g2pix = 0.0; // g2 = "res"
     localreduce = 0.0;
@@ -209,10 +210,12 @@ int PCG_GLS_true(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *x, double 
             g[j] = gp[j] - ro * AtNm1Ah[j]; // Use Ribière-Polak formula
 
 	      apply_precond(p, A, &Nm1, g, Cg);
+
         g2pixp = g2pix; // g2p = "res"
         localreduce = 0.0;
-        for (i = 0; i < n; i++) // g2 = (Cg, g)
-            localreduce += Cg[i] * g[i] * pixpond[i];
+        for (i = 0; i < n; i++){ // g2 = (Cg, g)
+            // Cg[i] = g[i];
+            localreduce += Cg[i] * g[i] * pixpond[i];}
 
         MPI_Allreduce(&localreduce, &g2pix, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 

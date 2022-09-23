@@ -38,7 +38,7 @@ void write_map (void *signal, int type, long nside, const char *filename,
 struct Precond;
 
 // Block-Jacobi preconditioner
-int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, double *cond, int *lhits, int *old2new);
+int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv_sqrt, Mat *BJ_inv, Mat *BJ, double *b, double *cond, int *lhits, int *old2new);
 int precondblockjacobilikewGaps(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, double *cond, int *lhits, int nbsamples, int* sampleIdx);
 
 // Preconditioner constructor

@@ -26,6 +26,7 @@ struct Precond {
   int n;
   int Zn;
   Mat BJ_inv;
+  Mat BJ_inv_sqrt;
   Mat BJ;
   double *pixpond;
 
@@ -568,7 +569,7 @@ int get_pixshare_pond(Mat *A, double *pixpond )
 }
 
 //Block diagonal jacobi preconditioner with degenrate pixels pre-processing
-int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, double *cond, int *lhits, int *old2new)
+int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv_sqrt, Mat *BJ_inv, Mat *BJ, double *b, double *cond, int *lhits, int *old2new)
 {
   int           i, j, k ;                       // some indexes
   int           m, m_cut, n, rank, size;
@@ -772,6 +773,10 @@ int precondblockjacobilike(Mat *A, Tpltz Nm1, Mat *BJ_inv, Mat *BJ, double *b, d
   MatSetValues(BJ_inv, n, A->nnz, vpixBlock_inv);
   BJ_inv->trash_pix = 0;
   MatLocalShape(BJ_inv,3);
+
+  MatSetIndices(BJ_inv_sqrt, n, A->nnz, indices_new);
+  // MatSetValues(BJ_inv_sqrt, n, A->nnz, vpixBlock_inv);
+
 
   //Init Block-Jacobi preconditioner
   MatSetIndices(BJ, n, A->nnz, indices_new);
@@ -1427,9 +1432,9 @@ void Lanczos_eig(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ, dou
   MPI_Comm_rank(A->comm, &rank);
   MPI_Comm_size(A->comm, &size);
 
-  if (rank == 0) {
-    printf("size %i and K %i\n", size, K);
-  }
+  int K_iter = K;
+
+
   m = A->m;                                    // Number of local time samples
   n = (A->lcount) - (A->nnz) * (A->trash_pix); // Number of local pixels
 
@@ -1439,19 +1444,19 @@ void Lanczos_eig(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ, dou
   Av = (double *)malloc(n * sizeof(double));
   _g = (double *)malloc(m * sizeof(double));
 
-  T = (double *)calloc((K+1)*(K+1), sizeof(double));
-  Tt = (double *)calloc(K*K, sizeof(double));
+  T = (double *)calloc((K_iter+1)*(K_iter+1), sizeof(double));
+  Tt = (double *)calloc(K_iter*K_iter, sizeof(double));
 
-  Ritz_vectors_out = (double *)calloc(n*K,  sizeof(double));
+  Ritz_vectors_out = (double *)calloc(n*K_iter,  sizeof(double));
   // Ritz_vectors_out_r = (double *)calloc(n*K,  sizeof(double));
   w = (double *)malloc(n*sizeof(double));
   v = (double *)calloc(n, sizeof(double));
   vold = (double *)calloc(n, sizeof(double));
-  V = (double *)calloc(n * (K+1), sizeof(double));
+  V = (double *)calloc(n * (K_iter+1), sizeof(double));
 
-  AmulV = (double *)calloc(n * (K+1), sizeof(double));
+  AmulV = (double *)calloc(n * (K_iter+1), sizeof(double));
 
-  Ritz_values = (double *)calloc(K, sizeof(double));
+  Ritz_values = (double *)calloc(K_iter, sizeof(double));
 
   Ritz_vectors = calloc(K, sizeof(double *));
   for (i = 0; i < K; i++)
@@ -1484,7 +1489,7 @@ void Lanczos_eig(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ, dou
   if (beta > eps){
     for (i = 0; i < n; i++){
       v[i] = w[i]/beta;
-      V[i*(K+1)] = v[i];
+      V[i*(K_iter+1)] = v[i];
     }
   }
 
@@ -1503,7 +1508,7 @@ void Lanczos_eig(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ, dou
 
   for (i = 0; i < n; i++)
     {
-      AmulV[i*(K+1)] = w[i];
+      AmulV[i*(K_iter+1)] = w[i];
       w[i] = w[i] - (alpha * v[i]);
     }
 
@@ -1515,7 +1520,7 @@ void Lanczos_eig(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ, dou
 
   st = MPI_Wtime();
 
-  for (i = 0; i < K; i++) {
+  for (i = 0; i < K_iter; i++) {
 
     dot = 0.0;
     for (j = 0; j < n; j++)
@@ -1526,7 +1531,7 @@ void Lanczos_eig(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ, dou
     if (beta > eps) {
       for (j = 0; j < n; j++) {
 	v[j] = w[j] / beta;
-	V[j * (K+1) + i + 1] = v[j];
+	V[j * (K_iter+1) + i + 1] = v[j];
       }
     }
 
@@ -1537,9 +1542,9 @@ void Lanczos_eig(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ, dou
     //T(i,i+1) = beta
     //T(i+1,i) = beta
 
-    T[(i * (K+1)) + i] = alpha;
-    T[(i * (K+1)) + i + 1] = beta;
-    T[((i+1) * (K+1)) + i] = beta;
+    T[(i * (K_iter+1)) + i] = alpha;
+    T[(i * (K_iter+1)) + i + 1] = beta;
+    T[((i+1) * (K_iter+1)) + i] = beta;
 
     //Av = A * v = Pt N P * v
     MatVecProd(A, v, _g, 0);
@@ -1555,7 +1560,7 @@ void Lanczos_eig(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ, dou
     MPI_Allreduce(&dot, &alpha, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
     for (j = 0; j < n; j++) {
-      AmulV[j * (K+1) + i + 1] = w[j];
+      AmulV[j * (K_iter+1) + i + 1] = w[j];
       w[j] = w[j] - (alpha * v[j]) - (beta * vold[j]);
       vold[j] = v[j];
     }
@@ -1572,21 +1577,21 @@ void Lanczos_eig(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ, dou
   // Here we reduce the dimention of T from (K+1 * K+1) to K * K;
   // Here we reduce the dimention of V from (N * K+1) to (N * K)
 
-  for (i = 0; i < K; i++){
-    for (j = 0; j < K; j++){
-      T[i*K + j] = T[i*(K+1) + j];
+  for (i = 0; i < K_iter; i++){
+    for (j = 0; j < K_iter; j++){
+      T[i*K_iter + j] = T[i*(K_iter+1) + j];
     }
   }
 
   for (i = 0; i < n; i++){
-    for (j = 0; j < K; j++){
-      AmulV[i*K + j] = AmulV[i*(K+1) + j];
+    for (j = 0; j < K_iter; j++){
+      AmulV[i*K_iter + j] = AmulV[i*(K_iter+1) + j];
     }
   }
 
   for (i = 0; i < n; i++){
-    for (j = 0; j < K; j++){
-      V[i*K + j] = V[i*(K+1) + j];
+    for (j = 0; j < K_iter; j++){
+      V[i*K_iter + j] = V[i*(K_iter+1) + j];
     }
   }
 
@@ -1597,11 +1602,11 @@ void Lanczos_eig(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ, dou
 
   st = MPI_Wtime();
 
-  transpose_nn(T, K);
+  transpose_nn(T, K_iter);
 
   //int dsyev_(char *jobz, char *uplo, int *n, double *a, int *lda, double *w, double *work, int *lwork, int *info)
 
-  dsyev_("Vectors", "Upper", &K, T, &K , Ritz_values, &wkopt, &lwork, &info);
+  dsyev_("Vectors", "Upper", &K_iter, T, &K_iter , Ritz_values, &wkopt, &lwork, &info);
 
 
 
@@ -1609,11 +1614,11 @@ void Lanczos_eig(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ, dou
   lwork = (int) wkopt;
   work = (double*)malloc( lwork*sizeof(double));
 
-  dsyev_("Vectors", "Upper", &K, T, &K , Ritz_values, work, &lwork, &info);
+  dsyev_("Vectors", "Upper", &K_iter, T, &K_iter , Ritz_values, work, &lwork, &info);
 
   //free(work);
 
-  transpose_nn(T, K);
+  transpose_nn(T, K_iter);
 
   t = MPI_Wtime();
   if (rank == 0) {
@@ -1623,33 +1628,35 @@ void Lanczos_eig(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ, dou
 
   st = MPI_Wtime();
 
-  memset(Ritz_vectors_out, 0, n*K*sizeof(double));
+  memset(Ritz_vectors_out, 0, n*K_iter*sizeof(double));
 
   for (i = 0; i < n; i++) {
-    for (k = 0; k < K; k++) {
-      for (j = 0; j < K; j++) {
-	Ritz_vectors_out[i*K + j] += V[i*K + k] * T[k*K + j];
+    for (k = 0; k < K_iter; k++) {
+      for (j = 0; j < K_iter; j++) {
+	Ritz_vectors_out[i*K_iter + j] += V[i*K_iter + k] * T[k*K_iter + j];
       }
     }
   }
 
   for (i = 0; i < n; i++)
     for (j = 0; j < K; j++)
-      Ritz_vectors[j][i] =  Ritz_vectors_out[i*K + j];
+      // Ritz_vectors[j][i] =  Ritz_vectors_out[i*K_iter + (K_iter-1-j)];
+      Ritz_vectors[j][i] =  Ritz_vectors_out[i*K_iter + (j)];
 
-  memset(Ritz_vectors_out, 0, n*K*sizeof(double));
+  memset(Ritz_vectors_out, 0, n*K_iter*sizeof(double));
 
   for (i = 0; i < n; i++) {
-    for (k = 0; k < K; k++) {
-      for (j = 0; j < K; j++) {
-	Ritz_vectors_out[i*K + j] += AmulV[i*K + k] * T[k*K + j];
+    for (k = 0; k < K_iter; k++) {
+      for (j = 0; j < K_iter; j++) {
+	Ritz_vectors_out[i*K_iter + j] += AmulV[i*K_iter + k] * T[k*K_iter + j];
       }
     }
   }
 
   for (i = 0; i < n; i++)
     for (j = 0; j < K; j++)
-      Ritz_vectors_AZ[j][i] =  Ritz_vectors_out[i*K + j];
+      // Ritz_vectors_AZ[j][i] =  Ritz_vectors_out[i*K_iter + (K_iter-1-j)];
+      Ritz_vectors_AZ[j][i] =  Ritz_vectors_out[i*K_iter + (j)];
 
   // Verif Eigenvector Precision
   double alpha_vec[K];
@@ -1683,7 +1690,7 @@ void Lanczos_eig(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ, dou
 }
 
 // Lanczos procedure to build the deflation subspace of the "a posteriori" 2lvl preconditioner with only some blocks of Tplz Matrix
-void Lanczos_eigWGaps(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ, double *x, const double *b, const double *noise, double tol, const double *pixpond, int K, double ***out_Ritz_vectors, double ***out_Ritz_vectors_AZ, int nbsamples, int *sampleIdx)
+void Lanczos_eigWGaps(Mat *A, const Tpltz *Nm1, Mat *BJ_inv_sqrt, Mat *BJ_inv, const Mat *BJ, double *x, const double *b, const double *noise, double tol, const double *pixpond, int K, double ***out_Ritz_vectors, double ***out_Ritz_vectors_AZ, int nbsamples, int *sampleIdx)
 {
   int i, j, k ;            // some indexes
   int m, n, rank, size;
@@ -1692,20 +1699,23 @@ void Lanczos_eigWGaps(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ
   double beta, alpha, result, dot;
   int info = 0, lwork = -1;
 
-  double *Av = NULL, *_g = NULL;
+  double *Av = NULL, *_g = NULL, *Cg = NULL;
   double *Tt = NULL, *T = NULL;
   double *w = NULL, *v = NULL, *vold = NULL;
   double *V = NULL, *AmulV = NULL;
+  double *xprec = NULL;
 
   double *Ritz_values = NULL;
   double *Ritz_vectors_out = NULL;
   double *Ritz_vectors_out_r = NULL;
   double **Ritz_vectors = NULL;
   double **Ritz_vectors_AZ = NULL;
-
-  double *work = NULL;
+  double *BJ_inv_sqrt_val = NULL;
+  double *work = (double*) malloc(10*sizeof(double));
+  double *work_Block = NULL;
+  double *Lambda = NULL;
   double wkopt = 0.0;
-  K = K;
+  // K = 100;
 
   MPI_Comm_rank(A->comm, &rank);
   MPI_Comm_size(A->comm, &size);
@@ -1714,22 +1724,24 @@ void Lanczos_eigWGaps(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ
   n = (A->lcount) - (A->nnz) * (A->trash_pix); // Number of local pixels
 
   st = MPI_Wtime();
-  if (rank == 0) {
-    printf("size %i and K %i\n", size, K);
-  }
-  // Map domain
-  Av = (double *)malloc(n * sizeof(double));
-  _g = (double *)malloc(m * sizeof(double));
 
-  T = (double *)calloc((K+1)*(K+1), sizeof(double));
-  Tt = (double *)calloc(K*K, sizeof(double));
+  // Map domain
+  xprec       = (double *)malloc(n * sizeof(double));
+  Av          = (double *)malloc(n * sizeof(double));
+  Cg          = (double *)malloc(n * sizeof(double));
+  _g          = (double *)malloc(m * sizeof(double));
+  BJ_inv_sqrt_val = (double *)malloc(n * A->nnz * sizeof(double));
+  work_Block  = (double *)malloc(A->nnz * A->nnz * sizeof(double));
+  Lambda      = (double *)malloc(A->nnz * sizeof(double));
+  T           = (double *)calloc((K+1)*(K+1), sizeof(double));
+  Tt          = (double *)calloc(K*K, sizeof(double));
 
   Ritz_vectors_out = (double *)calloc(n*K,  sizeof(double));
   // Ritz_vectors_out_r = (double *)calloc(n*K,  sizeof(double));
-  w = (double *)malloc(n*sizeof(double));
-  v = (double *)calloc(n, sizeof(double));
+  w    = (double *)malloc(n*sizeof(double));
+  v    = (double *)calloc(n, sizeof(double));
   vold = (double *)calloc(n, sizeof(double));
-  V = (double *)calloc(n * (K+1), sizeof(double));
+  V    = (double *)calloc(n * (K+1), sizeof(double));
 
   AmulV = (double *)calloc(n * (K+1), sizeof(double));
 
@@ -1745,6 +1757,131 @@ void Lanczos_eigWGaps(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ
 
   for (i = 0; i < n; ++i)
     w[i] = 0.0;
+
+  int n_pixels = n/A->nnz;
+  int nnz = A->nnz;
+  if (rank == 0) {
+    printf("CheckPoint SQRT 1 npix = %i\n", n_pixels);
+    fflush(stdout);
+
+  }
+  // ****************************************************************************************************
+  // ****************************************************************************************************
+  double testblk[nnz*nnz];
+  for (int  i = 0; i < n_pixels; i++) {
+
+    double mem[nnz*nnz];
+    for (int j = 0; j < nnz*nnz; j++) {
+      work_Block[j] = BJ->values[i*A->nnz*A->nnz+j];
+      mem[j] = work_Block[j];
+      BJ_inv_sqrt_val[i*A->nnz*A->nnz+j] = 0.0;
+      testblk[j] = 0.0;
+    }
+
+    dpotrf_(	"U",&nnz, work_Block, &nnz,&info);
+    // for (size_t ii = 0; ii < nnz*nnz; ii++) {
+    //   BJ_inv_sqrt_val[i*A->nnz*A->nnz+ii] = work_Block[ii];
+    // }
+    // if (rank == 0) {
+    //   for (int j = 0; j < nnz*nnz; j++) {
+    //     printf(" %e \n", work_Block[j]);
+    //   }
+    // }
+    double canon[nnz];
+    double res[nnz*nnz];
+    // double test[nnz*nnz];
+    for (int ii = 0; ii < nnz; ++ii)
+    {
+      for (int j = 0; j < nnz; ++j)
+      {
+        canon[j]=0.;
+      }
+      canon[ii]=1.;
+      for (int j = 0; j < nnz; ++j)
+      {
+        // res[j*nnz+ii] = canon[j];
+        BJ_inv_sqrt_val[i*nnz*nnz+j*nnz+ii] = canon[j];
+        // mem[j*nnz+ii] = BJ_inv_sqrt_val[i*A->nnz*A->nnz+j*nnz+ii];
+        // mem[j*nnz+ii] = BJ_inv_sqrt_val[i*A->nnz*A->nnz+j*nnz+ii];
+        for (int k = 0; k < j; k++)
+        {
+          // res[j*nnz+ii] -= work_Block[j*nnz+k]*res[k*nnz+ii];
+          BJ_inv_sqrt_val[i*nnz*nnz+j*nnz+ii] -= work_Block[j*nnz+k]*BJ_inv_sqrt_val[i*nnz*nnz+k*nnz+ii];
+        }
+        // res[j*nnz+ii] = res[j*nnz+ii]/work_Block[j*nnz+j];
+        BJ_inv_sqrt_val[i*nnz*nnz+j*nnz+ii] = BJ_inv_sqrt_val[i*nnz*nnz+j*nnz+ii]/work_Block[j*nnz+j];
+        // if (rank == 0) {
+        //   printf(" %e \n", BJ_inv_sqrt_val[i*A->nnz*A->nnz+j*nnz+ii]);
+        // }
+      }
+      // for (int j = nnz-1; j >= 0; j-=1)
+      // {
+      //   // res[j*nnz+ii] = res[j*nnz+ii]/work_Block[j*nnz+j];
+      //   for (int k = nnz-1; k > j; k-=1)
+      //   {
+      //     res[j*nnz+ii] -= work_Block[j+k*nnz]*res[k*nnz+ii];
+      //     // BJ_inv_sqrt_val[i*A->nnz*A->nnz+j*nnz+ii] -= work_Block[j+k*nnz]*BJ_inv_sqrt_val[i*A->nnz*A->nnz+k*nnz+ii];
+      //   }
+      //   res[j*nnz+ii] = res[j*nnz+ii]/work_Block[j*nnz+j];
+      //   // BJ_inv_sqrt_val[i*A->nnz*A->nnz+j*nnz+ii] = BJ_inv_sqrt_val[i*A->nnz*A->nnz+j*nnz+ii]/work_Block[j*nnz+j];
+      //   // if (rank == 0) {
+      //   //   printf(" %e \n", BJ_inv_sqrt_val[i*A->nnz*A->nnz+j*nnz+ii]);
+      //   // }
+      // }
+    }
+    // if (rank == 0) {
+    //   printf("------------------------\n");
+    // }
+
+
+    // if (rank == 0) {
+    //   for (int j = 0; j < A->nnz*A->nnz; j++) {
+    //   printf("%e\n", work_Block[j]);}
+    // }
+    // lwork = -1;
+    // dsyev_("V", "U", &nnz, work_Block, &nnz , Lambda, &wkopt, &lwork, &info);
+    //
+    // lwork = (int) wkopt;
+    // work = (double*) realloc(work, lwork*sizeof(double));
+    //
+    // dsyev_("V", "U", &nnz, work_Block, &nnz , Lambda, work, &lwork, &info);
+    // // if (rank == 0) {
+    // //   printf("%e\n", Lambda[0]);
+    // //   printf("%e\n", Lambda[1]);
+    // //   printf("%e\n", Lambda[2]);
+    // // }
+    // for (int ii = 0; ii < nnz; ii++) {
+    //   for (int jj = 0; jj < nnz; jj++) {
+    //     for (int kk = 0; kk < nnz; kk++) {
+    //       BJ_inv_sqrt_val[i*nnz*nnz + ii*nnz + jj] += work_Block[ii + kk*nnz]*work_Block[jj + kk*nnz]*sqrt(Lambda[kk]);
+    //     }
+    //   }
+    // }
+    // if (rank == 0) {
+      // printf("******************************************************\n");
+      // for (int ii = 0; ii < nnz; ii++) {
+      //   for (int jj = 0; jj < nnz; jj++) {
+      //     // for (int kk = 0; kk < nnz; kk++){
+      //     //   BJ_inv_sqrt_val[i*nnz*nnz + ii*nnz + jj] += res[ii*nnz + kk]*mem[kk*nnz + jj];
+      //     // }
+      //     // printf(" %e \n", BJ_inv_sqrt_val[i*nnz*nnz + ii*nnz + jj]);
+      //     BJ_inv_sqrt_val[i*nnz*nnz + ii*nnz + jj] = 0.0;
+      //   }
+      //   BJ_inv_sqrt_val[i*nnz*nnz + ii*nnz + ii] = 1.0;
+      // }
+    // }
+    // free(work);
+  }
+
+  MatSetValues(BJ_inv_sqrt, n, A->nnz, BJ_inv_sqrt_val);
+  BJ_inv_sqrt->trash_pix = 0;
+  MatLocalShape(BJ_inv_sqrt,3);
+
+  lwork = -1;
+  // ****************************************************************************************************
+  // ****************************************************************************************************
+
+  // TrBJMatVecProd(BJ_inv_sqrt, x, xprec, 0);
 
   MatVecProd(A, x, _g, 0);
   // MatVecProdwGaps(A, x, _g, 0, sampleIdx, nbsamples);
@@ -1765,6 +1902,8 @@ void Lanczos_eigWGaps(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ
   stbmmProdwGaps(*Nm1, _g, nbsamples, sampleIdx); // _g = Nm1 (Ax-b)
 
   TrMatVecProd(A, _g, w, 0);
+
+  // MatVecProd(BJ_inv_sqrt, Cg, w, 0);
   // TrMatVecProdwGaps(A, _g, w, 0, sampleIdx, nbsamples); // g = At _g
 
   //beta = sqrt(dot(w, w))
@@ -1782,6 +1921,8 @@ void Lanczos_eigWGaps(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ
   }
 
   //Av = A * v = Pt N P * v
+  // TrBJMatVecProd(BJ_inv_sqrt, v, xprec, 0);
+
   MatVecProd(A, v, _g, 0);
   // MatVecProdwGaps(A, v, _g, 0, sampleIdx, nbsamples);
 
@@ -1790,6 +1931,8 @@ void Lanczos_eigWGaps(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ
 
   TrMatVecProd(A, _g, Av, 0);
   // TrMatVecProdwGaps(A, _g, Av, 0, sampleIdx, nbsamples); // g = At _g
+
+  // MatVecProd(BJ_inv_sqrt, Cg, Av, 0);
 
   memcpy(w, Av, n * sizeof(double));
 
@@ -1840,12 +1983,14 @@ void Lanczos_eigWGaps(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ
     T[((i+1) * (K+1)) + i] = beta;
 
     //Av = A * v = Pt N P * v
+    // TrBJMatVecProd(BJ_inv_sqrt, v, xprec, 0);
     MatVecProd(A, v, _g, 0);
     // MatVecProdwGaps(A, v, _g, 0, sampleIdx, nbsamples);
     stbmmProdwGaps(*Nm1, _g, nbsamples, sampleIdx);
     TrMatVecProd(A, _g, Av, 0);
     // TrMatVecProdwGaps(A, _g, Av, 0, sampleIdx, nbsamples);
-
+    // MatVecProd(BJ_inv_sqrt, Cg, Av, 0);
+    // MatVecProd(BJ_inv, Cg, Av, 0);
 
     // MatVecProd(A, v, _g, 0);
     // stbmmProd(*Nm1, _g);
@@ -1912,7 +2057,7 @@ void Lanczos_eigWGaps(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ
 
 
   lwork = (int) wkopt;
-  work = (double*)malloc( lwork*sizeof(double));
+  work = (double*) realloc(work, lwork*sizeof(double));
 
   dsyev_("Vectors", "Upper", &K, T, &K , Ritz_values, work, &lwork, &info);
 
@@ -1924,6 +2069,369 @@ void Lanczos_eigWGaps(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ
   //     // Ritz_values
   //   }
   // }
+  transpose_nn(T, K);
+
+  t = MPI_Wtime();
+  if (rank == 0) {
+    printf("[rank %d] Lanczos dsyev time=%lf \n", rank, t - st);
+    fflush(stdout);
+  }
+
+  st = MPI_Wtime();
+
+  memset(Ritz_vectors_out, 0, n*K*sizeof(double));
+  // Z = V_K*T
+  for (i = 0; i < n; i++) {
+    for (k = 0; k < K; k++) {
+      for (j = 0; j < K; j++) {
+	       Ritz_vectors_out[i + j*n] += V[i*K + k] * T[k*K + j];
+      }
+    }
+  }
+
+  for (j = 0; j < K; j++){
+    // TrBJMatVecProd(BJ_inv_sqrt, &Ritz_vectors_out[j*n], w, 0);
+  for (i = 0; i < n; i++){
+      // Ritz_vectors[j][i] =  w[i];
+      Ritz_vectors[j][i] =  Ritz_vectors_out[j*n+i];
+    }
+  }
+
+  memset(Ritz_vectors_out, 0, n*K*sizeof(double));
+  for (int j = 0; j < K; j++) {
+    if (rank == 0) {
+      printf("MatVecProd for verif on Ritz Vector nb %i\n", j);
+    }
+    MatVecProd(A, Ritz_vectors[j], _g, 0);
+    stbmmProd(*Nm1, _g);
+    TrMatVecProd(A, _g, Ritz_vectors_AZ[j], 0);
+    // MatVecProd(BJ_inv, Cg, Ritz_vectors_AZ[j], 0);
+
+  }
+
+  // A.Z = A.V_K*T
+  // for (i = 0; i < n; i++) {
+  //   for (k = 0; k < K; k++) {
+  //     for (j = 0; j < K; j++) {
+	//        Ritz_vectors_out[i*K + j] += AmulV[i + k*n] * T[k*K + j];
+	//        // Ritz_vectors_out[i*K + j] += AmulV[i*K + k] * T[k*K + j];
+  //     }
+  //   }
+  // }
+  //
+  // for (i = 0; i < n; i++)
+  //   for (j = 0; j < K; j++)
+  //     Ritz_vectors_AZ[j][i] =  Ritz_vectors_out[i*K + j];
+
+
+
+  // Verif Eigenvector Precision
+  double alpha_vec[K];
+  double znorm_vec[K];
+  // for (j = 0; j < K; j++){
+  //   double residual = 0.0;
+  //   double Znorm = 0.0;
+  //   for (i = 0; i < n; i++){
+  //     residual += (Ritz_vectors_AZ[j][i] - Ritz_values[j]*Ritz_vectors[j][i])*(Ritz_vectors_AZ[j][i] - Ritz_values[j]*Ritz_vectors[j][i]);
+  //     Znorm += Ritz_vectors[j][i]*Ritz_vectors[j][i];
+  //   }
+  //   MPI_Allreduce(&residual, &alpha_vec[j], 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  //   MPI_Allreduce(&Znorm, &znorm_vec[j], 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  // }
+  if (rank == 0) {
+    for (int k = 0; k < K; k++) {
+      printf("Ritz value %i : %e \n", k, Ritz_values[k]);
+      // printf("Ritz vec norm %i : %e \n", k, sqrt(znorm_vec[k]));
+      // printf("Ritz NORMALIZED residual residual %i : %e \n", k, sqrt(alpha_vec[k])/fabs(sqrt(znorm_vec[k])*Ritz_values[k]));
+      // printf("Ritz residual residual %i : %e \n", k, sqrt(alpha_vec[k]));
+      fflush(stdout);
+      // Ritz_values
+    }
+  }
+
+  t = MPI_Wtime();
+  if (rank == 0) {
+    printf("[rank %d] Lanczos V*T multiplication time=%lf \n", rank, t - st);
+    fflush(stdout);
+  }
+
+  free(Av); free(_g); free(Tt); free(T); free(w); free(v); free(vold), free(Cg);
+  free(V); free(Ritz_values); free(Ritz_vectors_out); free(xprec);
+  free(Lambda); free(work_Block);
+  *out_Ritz_vectors = Ritz_vectors;
+  *out_Ritz_vectors_AZ = Ritz_vectors_AZ;
+}
+// ***********************************************************************************************************************
+// ***********************************************************************************************************************
+// Lanczos procedure to build the deflation subspace of the "a posteriori" 2lvl preconditioner with only some blocks of Tplz Matrix
+void Arnoldi_eigWGaps(Mat *A, const Tpltz *Nm1, Mat *BJ_inv, const Mat *BJ, double *x, const double *b, const double *noise, double tol, const double *pixpond, int K, double ***out_Ritz_vectors, double ***out_Ritz_vectors_AZ, int nbsamples, int *sampleIdx)
+{
+  int i, j, k ;            // some indexes
+  int m, n, rank, size;
+  double st, t;               //timers
+  double solve_time = 0.0;
+  double beta, alpha, result, dot;
+  int info = 0, lwork = -1;
+
+  double *Av = NULL, *_g = NULL, *Cg = NULL;
+  double *Tt = NULL, *T = NULL;
+  double *w = NULL, *v = NULL, *vold = NULL;
+  double *V = NULL, *AmulV = NULL;
+
+  double *Ritz_values = NULL;
+  double *Ritz_values_I = NULL;
+  double *Ritz_vectors_out = NULL;
+  double *Ritz_vectors_out_r = NULL;
+  double **Ritz_vectors = NULL;
+  double **Ritz_vectors_AZ = NULL;
+
+  double *work = NULL;
+  double wkopt = 0.0;
+  // K = 100;
+
+  MPI_Comm_rank(A->comm, &rank);
+  MPI_Comm_size(A->comm, &size);
+
+  m = A->m;                                    // Number of local time samples
+  n = (A->lcount) - (A->nnz) * (A->trash_pix); // Number of local pixels
+
+  st = MPI_Wtime();
+  if (rank == 0) {
+    printf("size %i and K %i\n", size, K);
+  }
+  // Map domain
+  Av = (double *)malloc(n * sizeof(double));
+  Cg = (double *)malloc(n * sizeof(double));
+  _g = (double *)malloc(m * sizeof(double));
+
+  T = (double *)calloc((K+1)*(K+1), sizeof(double));
+  Tt = (double *)calloc(K*K, sizeof(double));
+
+  Ritz_vectors_out = (double *)calloc(n*K,  sizeof(double));
+  // Ritz_vectors_out_r = (double *)calloc(n*K,  sizeof(double));
+  w = (double *)malloc(n*sizeof(double));
+  v = (double *)calloc(n, sizeof(double));
+  vold = (double *)calloc(n, sizeof(double));
+  V = (double *)calloc(n * (K+1), sizeof(double));
+
+  AmulV = (double *)calloc(n * (K+1), sizeof(double));
+
+  Ritz_values   =  (double *)calloc(K, sizeof(double));
+  Ritz_values_I =  (double *)calloc(K, sizeof(double));
+  double *VR    =  (double *)calloc(K*K, sizeof(double));
+  double *VL    =  (double *)calloc(K*K, sizeof(double));
+
+  Ritz_vectors = calloc(K, sizeof(double *));
+  for (i = 0; i < K; i++)
+    Ritz_vectors[i] = calloc(n, sizeof(double));
+
+  Ritz_vectors_AZ = calloc(K, sizeof(double *));
+  for (i = 0; i < K; i++)
+    Ritz_vectors_AZ[i] = calloc(n, sizeof(double));
+
+  for (i = 0; i < n; ++i)
+    w[i] = 0.0;
+
+  MatVecProd(A, x, _g, 0);
+  // MatVecProdwGaps(A, x, _g, 0, sampleIdx, nbsamples);
+
+  // for (i = 0; i < m; i++)
+  //   _g[i] = b[i] + noise[i] - _g[i];
+  // for (int ispl = 0; ispl < nbsamples; ispl++) // To Change with Sequenced Data
+  for (int ispl = 0; ispl < Nm1->nb_blocks_loc; ispl++) // To Change with Sequenced Data
+  {
+    int begblk = A->shift[sampleIdx[ispl]  ];
+    int endblk = A->shift[sampleIdx[ispl]+1];
+    for (int j = begblk; j < endblk; j++) {
+      _g[j] = b[j] + noise[j] - _g[j];
+    }
+  }
+
+  // stbmmProd(*Nm1, _g);
+  stbmmProdwGaps(*Nm1, _g, nbsamples, sampleIdx); // _g = Nm1 (Ax-b)
+
+  TrMatVecProd(A, _g, Cg, 0);
+  // TrMatVecProdwGaps(A, _g, w, 0, sampleIdx, nbsamples); // g = At _g
+  MatVecProd(BJ_inv, Cg, w, 0);
+
+  //beta = sqrt(dot(w, w))
+  dot = 0.0;
+  for (i = 0; i < n; i++)
+    dot += w[i] * w[i] * pixpond[i];
+  MPI_Allreduce(&dot, &result, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  beta = sqrt(result);
+
+  if (beta > eps){
+    for (i = 0; i < n; i++){
+      v[i] = w[i]/beta;
+      V[i*(K+1)] = v[i];
+    }
+  }
+
+  //Av = A * v = Pt N P * v
+  MatVecProd(A, v, _g, 0);
+  // MatVecProdwGaps(A, v, _g, 0, sampleIdx, nbsamples);
+
+  // stbmmProd(*Nm1, _g);
+  stbmmProdwGaps(*Nm1, _g, nbsamples, sampleIdx); // _g = Nm1 (Ax-b)
+
+  TrMatVecProd(A, _g, Cg, 0);
+  // TrMatVecProdwGaps(A, _g, Av, 0, sampleIdx, nbsamples); // g = At _g
+
+  MatVecProd(BJ_inv, Cg, Av, 0);
+
+  memcpy(w, Av, n * sizeof(double));
+
+  //alpha = dot(v, Av)
+  dot = 0.0;
+  for (i = 0; i < n; i++)
+    dot += v[i] * Av[i] * pixpond[i];
+  MPI_Allreduce(&dot, &T[0], 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+  for (i = 0; i < n; i++)
+    {
+      AmulV[i*(K+1)] = w[i];
+      w[i] = w[i] - (T[0] * v[i]);
+    }
+
+  t = MPI_Wtime();
+  if (rank == 0) {
+    printf("[rank %d] Lanczos init time=%lf \n", rank, t - st);
+    fflush(stdout);
+  }
+
+  st = MPI_Wtime();
+
+  for (i = 0; i < K; i++) {
+
+
+    dot = 0.0;
+    for (j = 0; j < n; j++)
+      dot += w[j] * w[j] * pixpond[j];
+    MPI_Allreduce(&dot, &result, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    beta = sqrt(result);
+
+    if (beta > eps) {
+      for (j = 0; j < n; j++) {
+	       v[j] = w[j] / beta;
+	       V[j * (K+1) + i + 1] = v[j];
+      }
+    }
+
+    else if (rank == 0) printf("division by zero in iteration %d\n", i);
+
+    // What should we do to construct this special triangular matrix
+    //T(i,i) = alpha
+    //T(i,i+1) = beta
+    //T(i+1,i) = beta
+
+    // T[(i * (K+1)) + i] = alpha;
+    // T[(i * (K+1)) + i + 1] = beta;
+    T[((i+1) * (K+1)) + i] = beta;
+
+    //Av = A * v = Pt N P * v
+    MatVecProd(A, v, _g, 0);
+    // MatVecProdwGaps(A, v, _g, 0, sampleIdx, nbsamples);
+    stbmmProdwGaps(*Nm1, _g, nbsamples, sampleIdx);
+    TrMatVecProd(A, _g, Cg, 0);
+    // TrMatVecProdwGaps(A, _g, Av, 0, sampleIdx, nbsamples);
+    MatVecProd(BJ_inv, Cg, Av, 0);
+
+    // MatVecProd(A, v, _g, 0);
+    // stbmmProd(*Nm1, _g);
+    // TrMatVecProd(A, _g, Av, 0);
+
+    memcpy(w, Av, n * sizeof(double));
+    for (j = 0; j < n; j++) {
+      AmulV[j * (K+1) + i + 1] = w[j];
+    }
+
+    //alpha = dot(v, Av)
+    for (int jj = 0; jj <= i; jj++) {
+      dot = 0.0;
+      for (j = 0; j < n; j++)
+        dot += V[j * (K+1) + jj] * Av[j] * pixpond[j];
+        // dot += v[j] * Av[j] * pixpond[j];
+
+      MPI_Allreduce(&dot, &T[jj*(K+1) + i+1], 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+      for (j = 0; j < n; j++) {
+        // AmulV[j * (K+1) + i + 1] = w[j];
+        // w[j] = w[j] - (alpha * v[j]) - (beta * vold[j]);
+        w[j] = w[j] - V[j * (K+1) + jj]*T[jj*(K+1) + i+1];
+        // vold[j] = v[j];
+      }
+    }
+
+    t = MPI_Wtime();
+    if (rank == 0) {
+      printf("Iteration = %d, [rank %d] Lanczos iteration time=%lf \n", i, rank, t - st);
+      fflush(stdout);
+    }
+
+    st = MPI_Wtime();
+  }
+
+  // Here we reduce the dimention of T from (K+1 * K+1) to K * K;
+  // Here we reduce the dimention of V from (N * K+1) to (N * K)
+
+  for (i = 0; i < K; i++){
+    for (j = 0; j < K; j++){
+      T[i*K + j] = T[i*(K+1) + j];
+    }
+  }
+
+  for (i = 0; i < n; i++){
+    for (j = 0; j < K; j++){
+      AmulV[i*K + j] = AmulV[i*(K+1) + j];
+    }
+  }
+
+  for (i = 0; i < n; i++){
+    for (j = 0; j < K; j++){
+      V[i*K + j] = V[i*(K+1) + j];
+    }
+  }
+
+  //[Ritz_vectors, Ritz_values] = eig(T)
+  //Ritz_values contains the eigenvalues of the matrix A in ascending order.
+
+  //lapack_int LAPACKE_dsyev(int matrix_layout, char jobz, char uplo, lapack_int n, double* a, lapack_int lda, double* w);
+
+  st = MPI_Wtime();
+
+  transpose_nn(T, K);
+  if (rank == 0) {
+    printf("CheckPoint 11 \n");
+    fflush(stdout);
+  }
+  //int dsyev_(char *jobz, char *uplo, int *n, double *a, int *lda, double *w, double *work, int *lwork, int *info)
+
+  // dsyev_("Vectors", "Upper", &K, T, &K , Ritz_values, &wkopt, &lwork, &info);
+  dgeev_(	"N","V", &K, T, &K, Ritz_values, Ritz_values_I, VL, &K, VR, &K, &wkopt, &lwork, &info);
+
+  if (rank == 0) {
+    printf("CheckPoint 22 \n");
+    fflush(stdout);
+  }
+
+  lwork = (int) wkopt;
+  work = (double*)malloc( lwork*sizeof(double));
+
+  // dsyev_("Vectors", "Upper", &K, T, &K , Ritz_values, work, &lwork, &info);
+  dgeev_(	"N","V", &K, T, &K, Ritz_values, Ritz_values_I, VL, &K, VR, &K, work, &lwork, &info);
+
+  //free(work);
+  if (rank == 0) {
+    for (int k = 0; k < K; k++) {
+      printf("Ritz value %i : %e + i. %e \n", k, Ritz_values[k], Ritz_values_I[k]);
+      fflush(stdout);
+      // Ritz_values
+    }
+    // printf("STOPed By USER \n");
+  }
+  // exit(0);
+
   transpose_nn(T, K);
 
   t = MPI_Wtime();
@@ -1958,6 +2466,8 @@ void Lanczos_eigWGaps(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ
     MatVecProd(A, Ritz_vectors[j], _g, 0);
     stbmmProd(*Nm1, _g);
     TrMatVecProd(A, _g, Ritz_vectors_AZ[j], 0);
+    // MatVecProd(BJ_inv, Cg, Ritz_vectors_AZ[j], 0);
+
   }
 
   // A.Z = A.V_K*T
@@ -2006,13 +2516,15 @@ void Lanczos_eigWGaps(Mat *A, const Tpltz *Nm1, const Mat *BJ_inv, const Mat *BJ
     fflush(stdout);
   }
 
-  free(Av); free(_g); free(Tt); free(T); free(w); free(v); free(vold);
+  free(Av); free(_g); free(Tt); free(T); free(w); free(v); free(vold), free(Cg);
   free(V); free(Ritz_values); free(Ritz_vectors_out);
 
   *out_Ritz_vectors = Ritz_vectors;
   *out_Ritz_vectors_AZ = Ritz_vectors_AZ;
 }
 
+// ***********************************************************************************************************************
+// ***********************************************************************************************************************
 
 // General routine for constructing a preconditioner
 void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat *A, Tpltz *Nm1, double **in_out_x, double *b, const double *noise, double *cond, int *lhits, double tol, int Zn, int precond, int nbsamples, int *sampleIdx, double *x_init, int n_init, int *old2new, int old_trashpix)
@@ -2032,7 +2544,7 @@ void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat
   p->precond = precond;
   p->Zn = Zn;
 
-  precondblockjacobilike(A, *Nm1, &(p->BJ_inv), &(p->BJ), b, cond, lhits, old2new);
+  precondblockjacobilike(A, *Nm1, &(p->BJ_inv_sqrt), &(p->BJ_inv), &(p->BJ), b, cond, lhits, old2new);
 
   p->n = (A->lcount) - (A->nnz) * (A->trash_pix);
 
@@ -2079,7 +2591,8 @@ void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat
     // 2lvl a posteriori
     else if (precond == 2)
       // Lanczos_eig(A, Nm1, &(p->BJ_inv), &(p->BJ), x, b, noise, tol, p->pixpond, Zn, &(p->Z), &(p->AZ)); // 2lvl a posteriori preconditioner
-      Lanczos_eigWGaps(A, Nm1, &(p->BJ_inv), &(p->BJ), x, b, noise, tol, p->pixpond, Zn, &(p->Z), &(p->AZ), nbsamples, sampleIdx);
+      Lanczos_eigWGaps(A, Nm1, &(p->BJ_inv_sqrt), &(p->BJ_inv), &(p->BJ), x, b, noise, tol, p->pixpond, Zn, &(p->Z), &(p->AZ), nbsamples, sampleIdx);
+      // Arnoldi_eigWGaps(A, Nm1, &(p->BJ_inv), &(p->BJ), x, b, noise, tol, p->pixpond, Zn, &(p->Z), &(p->AZ), nbsamples, sampleIdx);
     // Invalid precond
     else {
       printf("Whoops! Incorrect preconditioner parameter, please check documentation and try again: %d\n", precond);
@@ -2116,6 +2629,8 @@ void build_precond(struct Precond **out_p, double **out_pixpond, int *out_n, Mat
   *in_out_x = x;
 }
 
+
+
 // General routine for constructing a preconditioner
 void build_precond4rand(struct Precond **out_p, double **out_pixpond, int *out_n, Mat *A, Tpltz *Nm1, double **in_out_x, double *b, const double *noise, double *cond, int *lhits, double tol, int Zn, int precond, int nbsamples, int *sampleIdx)
 {
@@ -2134,7 +2649,7 @@ void build_precond4rand(struct Precond **out_p, double **out_pixpond, int *out_n
   p->precond = precond;
   p->Zn = Zn;
 
-  precondblockjacobilike(A, *Nm1, &(p->BJ_inv), &(p->BJ), b, cond, lhits, sampleIdx);
+  // precondblockjacobilike(A, *Nm1, &(p->BJ_inv), &(p->BJ), b, cond, lhits, sampleIdx);
   // precondblockjacobilikewGaps(A, *Nm1, &(p->BJ_inv), &(p->BJ), b, cond, lhits, nbsamples, sampleIdx);
 
   p->n = (A->lcount) - (A->nnz) * (A->trash_pix);
@@ -2168,7 +2683,7 @@ void build_precond4rand(struct Precond **out_p, double **out_pixpond, int *out_n
     // 2lvl a posteriori
     else if (precond == 2)
       // Lanczos_eig(A, Nm1, &(p->BJ_inv), &(p->BJ), x, b, noise, tol, p->pixpond, Zn, &(p->Z), &(p->AZ)); // 2lvl a posteriori preconditioner
-      Lanczos_eigWGaps(A, Nm1, &(p->BJ_inv), &(p->BJ), x, b, noise, tol, p->pixpond, Zn, &(p->Z), &(p->AZ), nbsamples, sampleIdx);
+      Lanczos_eigWGaps(A, Nm1, &(p->BJ_inv_sqrt), &(p->BJ_inv), &(p->BJ), x, b, noise, tol, p->pixpond, Zn, &(p->Z), &(p->AZ), nbsamples, sampleIdx);
 
     // Invalid precond
     else {

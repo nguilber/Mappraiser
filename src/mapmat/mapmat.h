@@ -87,6 +87,7 @@ int MatVecProd(Mat *A, double *x, double *y, int pflag);
 int MatVecProdwGaps(Mat *A, double *x, double *y, int pflag, int *blksamples, int nbsamples);
 
 int TrMatVecProd(Mat *A, double *y, double* x, int pflag);
+int TrBJMatVecProd(Mat *A, double *y, double* x, int pflag);
 int TrMatVecProdwGaps(Mat *A, double *y, double* x, int pflag, int *blksamples, int nbsamples);
 
 #if W_MPI

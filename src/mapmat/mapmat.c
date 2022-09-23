@@ -811,11 +811,50 @@ int TrMatVecProd(Mat *A, double *y, double* x, int pflag){
       }
   }
 
-
 #ifdef W_MPI
   greedyreduce(A, x);					//global reduce
 #endif
   return 0;
+}
+
+int TrBJMatVecProd(Mat *A, double *y, double* x, int pflag){
+  double *sbuf, *rbuf;
+  int i, j, k, e;
+  int nSmax, nRmax;
+  double *lvalues;
+  if(A->trash_pix){
+    for(i=0; i < A->m; i++)				//refresh vector
+      x[i]=0.0;						//
+
+      e=0;
+      for(i=0; i< A->m*A->nnz; i+=A->nnz){
+        if(A->indices[i]!=0){
+          //local transform reduce
+          for(j=0; j< A->nnz; j++){
+            x[A->indices[i+j]-(A->nnz)] += A->values[i+j] * y[e];	//
+          }
+        }							//
+        e++;
+      }
+  }
+  else{
+    for(i=0; i < A->m; i++)				//refresh vector
+      x[i]=0.0;						//
+
+    e=0;
+    for(i=0; i< A->m*A->nnz; i+=A->nnz){//local traxsform reduce
+      for(j=0; j< A->nnz; j++){
+        x[A->indices[i+j]] += A->values[i+j] * y[e];	//
+        // e++;
+      }						//
+      e++;
+    }
+  }
+
+// #ifdef W_MPI
+// greedyreduce(A, x);					//global reduce
+// #endif
+return 0;
 }
 
 /** Perform a transposed matrix-vector multiplication with only a part of the scans, \f$x \leftarrow A^t y\f$

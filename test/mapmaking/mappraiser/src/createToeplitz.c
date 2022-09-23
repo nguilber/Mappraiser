@@ -69,22 +69,22 @@ int i, index0;
     tpltzblocks[i].T_block = (T+index0);
     index0 += tpltzblocks[i].lambda;
 
-    int locnbsamples = tpltzblocks[i].lambda*nbsamples/100;
-
-    int sampleIdx[tpltzblocks[i].lambda];
-    for (int il = 0; il < tpltzblocks[i].lambda; il++) {
-      sampleIdx[il] = il;
-      tpltzblocks2[i].T_block[il] = tpltzblocks[i].T_block[il];
-    }
-    for (int il = 0; il < nbsamples; il++) {
-      int idxsave = sampleIdx[il];
-      int randidx = il+rand()%(tpltzblocks2[i].lambda-il);
-      sampleIdx[il]    = sampleIdx[randidx];
-      sampleIdx[randidx] = idxsave;
-      if (sampleIdx[il] > 0) {
-        tpltzblocks2[i].T_block[sampleIdx[il]] = 0.;
-      }
-    }
+    // int locnbsamples = tpltzblocks[i].lambda*nbsamples/100;
+    //
+    // int sampleIdx[tpltzblocks[i].lambda];
+    // for (int il = 0; il < tpltzblocks[i].lambda; il++) {
+    //   sampleIdx[il] = il;
+    //   tpltzblocks2[i].T_block[il] = tpltzblocks[i].T_block[il];
+    // }
+    // for (int il = 0; il < nbsamples; il++) {
+    //   int idxsave = sampleIdx[il];
+    //   int randidx = il+rand()%(tpltzblocks2[i].lambda-il);
+    //   sampleIdx[il]    = sampleIdx[randidx];
+    //   sampleIdx[randidx] = idxsave;
+    //   if (sampleIdx[il] > 0) {
+    //     tpltzblocks2[i].T_block[sampleIdx[il]] = 0.;
+    //   }
+    // }
   }
 
   return 0;

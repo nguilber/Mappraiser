@@ -221,7 +221,7 @@ int prepare_Rand_GLS(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *b, dou
   // if (rank == 0) {
   //   printf("******* CheckPoint 2 *******\n");
   //   fflush(stdout);
-  // }
+  // // }
   // for (int i = 0; i < size; i++) {
   //   displacements[i+1] = displacements[i] + vec_nb_blocks[i];
   //   if (rank == i) {
@@ -238,19 +238,19 @@ int prepare_Rand_GLS(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *b, dou
   //   fflush(stdout);
   // }
   // MPI_Allgatherv(TplzBlocknormsLoc, Nm1.nb_blocks_loc, MPI_DOUBLE, TplzBlocknorms, vec_nb_blocks, displacements, MPI_DOUBLE, MPI_COMM_WORLD);
-  // double stddev = 0.0, expmean = 0.0;
-  // for (int i = 0; i < Nm1.nb_blocks_tot; i++) {
-  //   expmean += TplzBlocknormsLoc[i];
-  // }
-  // if (rank == 0) {
-  //   printf("******* CheckPoint 4 *******\n");
-  //   fflush(stdout);
-  // }
-  // expmean = expmean/Nm1.nb_blocks_tot;
-  // for (int i = 0; i < Nm1.nb_blocks_tot; i++) {
-  //   stddev += (TplzBlocknormsLoc[i]-expmean)*(TplzBlocknormsLoc[i]-expmean);
-  // }
-  // stddev = sqrt(stddev/Nm1.nb_blocks_tot);
+  double stddev = 0.0, expmean = 0.0;
+  for (int i = 0; i < Nm1.nb_blocks_loc; i++) {
+    expmean += TplzBlocknormsLoc[i];
+  }
+  if (rank == 0) {
+    printf("******* CheckPoint 4 *******\n");
+    fflush(stdout);
+  }
+  expmean = expmean/Nm1.nb_blocks_loc;
+  for (int i = 0; i < Nm1.nb_blocks_loc; i++) {
+    stddev += (TplzBlocknormsLoc[i]-expmean)*(TplzBlocknormsLoc[i]-expmean);
+  }
+  stddev = sqrt(stddev/Nm1.nb_blocks_loc);
   // if (rank == 0) {
   //   printf("******* CheckPoint 5 *******\n");
   //   fflush(stdout);
@@ -262,71 +262,78 @@ int prepare_Rand_GLS(char *outpath, char *ref, Mat *A, Tpltz Nm1, double *b, dou
   //   for (int iblk = 0; iblk < Nm1.nb_blocks_tot; iblk++) {
   //     double normw = TplzBlocknorms[iblk];
   //     fwrite(&normw, sizeof(double), 1, fp);
+  //     // printf("%e \n", normw);
+  //
   //   }
   //   fflush(stdout);
   // }
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++AAAAAAAAAAAAAAAAAAAAA
   //          Selection of the blocks according to their norm
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++AAAAAAAAAAAAAAAAAAAAA
-  // int Globnbsamples = (Nm1.nb_blocks_tot*80)/100; // 80% of blocks kept in memory
-  // int randidx = 0;
-  // struct Pair minmax = getMinMax(&TplzBlocknorms[0], Nm1.nb_blocks_tot); //get min and max for uniform distrib
-  // for (int iblk = 0; iblk < Globnbsamples; iblk++) {
-  //   int    idxsave   = GlobsampleIdx[iblk];
-  //   double normsave  = TplzBlocknorms[iblk];
-  //   double unirand   =((double)rand()/(double)RAND_MAX); //random value between 0 and 1
-  //   // double randval   = minmax.min+unirand*(minmax.max-minmax.min); //unfirm subset of the data
-  //   double randval   = genrandn(expmean,stddev); //unfirm subset of the data
-  //   //Look for the closest value in TplzBlocknorms
-  //   randidx = getMinDist(randval, &TplzBlocknorms[iblk], Nm1.nb_blocks_tot-iblk); //get closest value from the random one
-  //   // exchange values and indices
-  //   GlobsampleIdx [iblk        ] = iblk+randidx;
-  //   TplzBlocknorms[iblk        ] = TplzBlocknorms[iblk+randidx];
-  //   GlobsampleIdx [iblk+randidx] = idxsave;
-  //   TplzBlocknorms[iblk+randidx] = normsave;
-  //   int isave = -1;
-  //   for (int i = nbsamples; i < Nm1.nb_blocks_loc; i++) {
-  //     if (GlobsampleIdx[iblk] == sampleIdx[i]) {
-  //       // idxsave = sampleIdx[nbsamples];
-  //       // sampleIdx[nbsamples] = sampleIdx[i]-displacements[rank];
-  //       // sampleIdx[i] = idxsave;
-  //       isave = i;
-  //     }
-  //   }
-  //   if (isave > nbsamples) {
-  //     idxsave = sampleIdx[nbsamples];
-  //     sampleIdx[nbsamples] = sampleIdx[isave]-displacements[rank];
-  //     // printf("%i %i %i %i\n", rank, countsp, sampleIdx[countsp], displacements[rank]);
-  //     sampleIdx[isave] = idxsave;
-  //     nbsamples += 1;
-  //   }
-  //   else if(isave == nbsamples) {
-  //     sampleIdx[isave] = sampleIdx[isave]-displacements[rank];
-  //     nbsamples += 1;
-  //   }
+  int Locnbsamples = (Nm1.nb_blocks_loc)*100/100; // 80% of blocks kept in memory
+  int randidx = 0;
+  struct Pair minmax = getMinMax(&TplzBlocknormsLoc[0], Nm1.nb_blocks_loc); //get min and max for uniform distrib
+  // nbsamples = Locnbsamples;
+  for (int iblk = 0; iblk < Nm1.nb_blocks_loc; iblk++) {
+    sampleIdx[iblk] = iblk;
+  }
+  for (int iblk = 0; iblk < Locnbsamples; iblk++) {
+    int    idxsave   = sampleIdx[iblk];
+    double normsave  = TplzBlocknormsLoc[iblk];
+    double unirand   =((double)rand()/(double)RAND_MAX); //random value between 0 and 1
+    double randval   = minmax.min+unirand*(minmax.max-minmax.min); //unfirm subset of the data
+    // double randval   = genrandn(expmean,stddev); //unfirm subset of the data
+    //Look for the closest value in TplzBlocknorms
+    randidx = getMinDist(randval, &TplzBlocknormsLoc[iblk], Nm1.nb_blocks_loc-iblk); //get closest value from the random one
+    // exchange values and indices
+    sampleIdx [iblk        ] = sampleIdx[iblk+randidx];
+    TplzBlocknormsLoc[iblk        ] = TplzBlocknorms[iblk+randidx];
+    sampleIdx [iblk+randidx] = idxsave;
+    TplzBlocknormsLoc[iblk+randidx] = normsave;
+    // int isave = -1;
+    // for (int i = nbsamples; i < Nm1.nb_blocks_loc; i++) {
+    //   if (GlobsampleIdx[iblk] == sampleIdx[i]) {
+    //     // idxsave = sampleIdx[nbsamples];
+    //     // sampleIdx[nbsamples] = sampleIdx[i]-displacements[rank];
+    //     // sampleIdx[i] = idxsave;
+    //     isave = i;
+    //   }
+    // }
+    // if (isave > nbsamples) {
+    //   idxsave = sampleIdx[nbsamples];
+    //   sampleIdx[nbsamples] = sampleIdx[isave]-displacements[rank];
+    //   // printf("%i %i %i %i\n", rank, countsp, sampleIdx[countsp], displacements[rank]);
+    //   sampleIdx[isave] = idxsave;
+    //   nbsamples += 1;
+    // }
+    // else if(isave == nbsamples) {
+    //   sampleIdx[isave] = sampleIdx[isave]-displacements[rank];
+    //   nbsamples += 1;
+    // }
+  }
+
+  // for (int iblk = 0; iblk < nbsamples; iblk++) {
+  //   printf("On rank %i sample block : %i\n", rank, sampleIdx[iblk]);
   // }
-  //
-  // // for (int iblk = 0; iblk < nbsamples; iblk++) {
-  // //   printf("On rank %i sample block : %i\n", rank, sampleIdx[iblk]);
-  // // }
-  // if (nbsamples == 0) {
-  //   printf("On rank %i number of samples = 0\n", rank);
-  // }
+  nbsamples = Locnbsamples;
+  if (nbsamples == 0) {
+    printf("On rank %i number of samples = 0\n", rank);
+  }
 
 
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++AAAAAAAAAAAAAAAAAAAAA
   //          Random selection of the blocks
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++AAAAAAAAAAAAAAAAAAAAA
-  nbsamples = (Nm1.nb_blocks_loc)*50/100;
-  for (int iblk = 0; iblk < Nm1.nb_blocks_loc; iblk++) {
-    sampleIdx[iblk] = iblk;
-  }
-  for (int iblk = 0; iblk < nbsamples; iblk++) {
-    int idxsave = sampleIdx[iblk];
-    int randidx = iblk+rand()%(Nm1.nb_blocks_loc-iblk);
-    sampleIdx[iblk] = sampleIdx[randidx];
-    sampleIdx[randidx] = idxsave;
-  }
+  // nbsamples = (Nm1.nb_blocks_loc)*10/100;
+  // for (int iblk = 0; iblk < Nm1.nb_blocks_loc; iblk++) {
+  //   sampleIdx[iblk] = iblk;
+  // }
+  // for (int iblk = 0; iblk < nbsamples; iblk++) {
+  //   int idxsave = sampleIdx[iblk];
+  //   int randidx = iblk+rand()%(Nm1.nb_blocks_loc-iblk);
+  //   sampleIdx[iblk] = sampleIdx[randidx];
+  //   sampleIdx[randidx] = idxsave;
+  // }
   // if (rank == 0) {
   //   printf("******* CheckPoint 6 *******\n");
   //   fflush(stdout);
